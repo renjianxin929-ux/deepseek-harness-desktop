@@ -1,0 +1,36 @@
+:root { color-scheme: dark; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  background: radial-gradient(1200px 800px at 50% -10%, #16233f 0%, #0b1220 55%, #070b14 100%);
+  color: #e2e8f0;
+  display: flex; align-items: center; justify-content: center;
+  user-select: none;
+}
+.card { width: min(540px, 88vw); text-align: center; }
+.logo {
+  width: 72px; height: 72px; margin: 0 auto 18px; border-radius: 18px;
+  background: linear-gradient(135deg, #4d6bfe, #7dd3fc);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 34px; color: #0b1220;
+  box-shadow: 0 10px 40px rgba(77, 107, 254, 0.35);
+}
+h1 { font-size: 22px; font-weight: 650; letter-spacing: 0.2px; }
+.subtitle { color: #8b9bb4; font-size: 13px; margin: 6px 0 26px; font-variant-numeric: tabular-nums; }
+.steps { list-style: none; text-align: left; margin: 0 auto; width: 300px; }
+.steps li { display: flex; align-items: center; gap: 10px; padding: 7px 0; color: #64748b; font-size: 14px; transition: color 0.2s; }
+.steps li .dot { width: 10px; height: 10px; border-radius: 50%; background: #26334d; flex: none; transition: all 0.2s; }
+.steps li.active { color: #e2e8f0; }
+.steps li.active .dot { background: #4d6bfe; animation: pulse 1.4s ease-in-out infinite; }
+.steps li.done { color: #7dd3fc; }
+.steps li.done .dot { background: #22c55e; }
+.steps.error li { color: #64748b; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px rgba(77,107,254,0.15); } 50% { box-shadow: 0 0 0 6px rgba(77,107,254,0.3); } }
+.detail { margin-top: 18px; font-size: 12px; color: #8b9bb4; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; min-height: 16px; }
+.error { margin-top: 22px; text-align: left; background: rgba(239, 68, 68, 0.08); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 12px; padding: 16px; }
+.error h2 { font-size: 15px; color: #f87171; margin-bottom: 10px; }
+.error pre { font-size: 11px; line-height: 1.5; color: #cbd5e1; white-space: pre-wrap; word-break: break-all; max-height: 240px; overflow: auto; font-family: ui-monospace, Menlo, monospace; }
+.error button { margin-top: 12px; padding: 8px 18px; border-radius: 8px; border: 0; background: #4d6bfe; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }
+.error button:hover { background: #3d5bf0; }
+.hidden { display: none; }

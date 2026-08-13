@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Harness Desktop</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <div class="card">
+        <div class="logo">H</div>
+        <h1>Harness Desktop</h1>
+        <p class="subtitle">DeepSeek Harness 0.1.0-rc.6</p>
+        <ol id="steps" class="steps">
+          <li data-step="runtime"><span class="dot"></span>Runtime found</li>
+          <li data-step="starting"><span class="dot"></span>Starting...</li>
+          <li data-step="waiting"><span class="dot"></span>Waiting for Harness...</li>
+          <li data-step="ready"><span class="dot"></span>Ready</li>
+        </ol>
+        <div id="detail" class="detail"></div>
+        <div id="error" class="error hidden">
+          <h2>Harness failed to start</h2>
+          <pre id="error-pre"></pre>
+          <button id="retry" type="button">Retry</button>
+        </div>
+      </div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

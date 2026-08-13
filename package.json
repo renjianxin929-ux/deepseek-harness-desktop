@@ -1,0 +1,23 @@
+{
+  "name": "harness-desktop",
+  "version": "0.1.0",
+  "description": "Harness Desktop V0.1 — minimal macOS desktop launcher for DeepSeek Harness 0.1.0-rc.6 (reuses the official Harness Web UI)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build:frontend": "vite build",
+    "dev:frontend": "vite",
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "typescript": "^5",
+    "vite": "^6"
+  }
+}
