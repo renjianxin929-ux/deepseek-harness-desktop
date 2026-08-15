@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Appearance — Harness Desktop</title>
+    <link rel="stylesheet" href="/src/appearance.css" />
+  </head>
+  <body>
+    <main id="appearance-root">
+      <header class="hd-header">
+        <h1 data-i18n="appearance">Appearance</h1>
+        <p class="hd-subtitle" data-i18n="subtitle">Keep Harness official. Make it yours.</p>
+      </header>
+
+      <section class="hd-section" aria-labelledby="hd-language-title">
+        <div class="hd-section-head">
+          <h2 id="hd-language-title" data-i18n="language">Language</h2>
+          <div class="hd-field">
+            <select id="hd-language">
+              <option value="system" data-i18n-option="langSystem">System</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="hd-section" aria-labelledby="hd-theme-title">
+        <h2 id="hd-theme-title" data-i18n="theme">Theme</h2>
+        <div id="hd-themes" class="hd-themes" role="radiogroup"></div>
+      </section>
+
+      <section class="hd-section" aria-labelledby="hd-wallpaper-title">
+        <div class="hd-section-head">
+          <h2 id="hd-wallpaper-title" data-i18n="wallpaper">Wallpaper</h2>
+          <button id="hd-wallpaper-pick" class="hd-btn hd-btn-primary" type="button" data-i18n="chooseImage">Choose image…</button>
+          <input id="hd-wallpaper-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+        <p class="hd-hint" data-i18n="wallpaperHint">Stored locally on this Mac. Never uploaded.</p>
+        <div id="hd-wallpaper-empty" class="hd-empty hidden" data-i18n="noWallpaper">No wallpaper selected.</div>
+        <div id="hd-wallpaper-controls" class="hd-controls hidden">
+          <div class="hd-field">
+            <label for="hd-fit" data-i18n="fit">Fit</label>
+            <select id="hd-fit">
+              <option value="cover" data-i18n-option="fitCover">Cover</option>
+              <option value="contain" data-i18n-option="fitContain">Contain</option>
+              <option value="fill" data-i18n-option="fitFill">Fill</option>
+              <option value="auto" data-i18n-option="fitAuto">Original size</option>
+            </select>
+          </div>
+          <div class="hd-field">
+            <label for="hd-position" data-i18n="position">Position</label>
+            <select id="hd-position">
+              <option value="center" data-i18n-option="posCenter">Center</option>
+              <option value="top" data-i18n-option="posTop">Top</option>
+              <option value="bottom" data-i18n-option="posBottom">Bottom</option>
+              <option value="left" data-i18n-option="posLeft">Left</option>
+              <option value="right" data-i18n-option="posRight">Right</option>
+              <option value="top-left" data-i18n-option="posTopLeft">Top left</option>
+              <option value="top-right" data-i18n-option="posTopRight">Top right</option>
+              <option value="bottom-left" data-i18n-option="posBottomLeft">Bottom left</option>
+              <option value="bottom-right" data-i18n-option="posBottomRight">Bottom right</option>
+            </select>
+          </div>
+          <div class="hd-field">
+            <label for="hd-overlay-mode" data-i18n="overlayTone">Overlay tone</label>
+            <select id="hd-overlay-mode">
+              <option value="auto" data-i18n-option="overlayAuto">Auto (follow theme)</option>
+              <option value="dark" data-i18n-option="overlayDark">Dark</option>
+              <option value="light" data-i18n-option="overlayLight">Light</option>
+            </select>
+          </div>
+          <div class="hd-field hd-range">
+            <label for="hd-opacity"><span data-i18n="opacity">Opacity</span> <span id="hd-opacity-val"></span></label>
+            <input id="hd-opacity" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <div class="hd-field hd-range">
+            <label for="hd-blur"><span data-i18n="blur">Blur</span> <span id="hd-blur-val"></span></label>
+            <input id="hd-blur" type="range" min="0" max="80" step="1" />
+          </div>
+          <div class="hd-field hd-range">
+            <label for="hd-overlay"><span data-i18n="overlay">Readability overlay</span> <span id="hd-overlay-val"></span></label>
+            <input id="hd-overlay" type="range" min="0" max="1" step="0.01" />
+          </div>
+          <button id="hd-wallpaper-remove" class="hd-btn hd-btn-danger" type="button" data-i18n="removeWallpaper">Remove wallpaper</button>
+        </div>
+      </section>
+
+      <section class="hd-section" aria-labelledby="hd-motion-title">
+        <div class="hd-section-head">
+          <h2 id="hd-motion-title" data-i18n="motion">Motion</h2>
+          <label class="hd-switch">
+            <input id="hd-motion" type="checkbox" />
+            <span class="hd-switch-track"></span>
+          </label>
+        </div>
+        <p class="hd-hint" data-i18n="motionHint">Lightweight, decorative motion. Respects the system “Reduce Motion” setting.</p>
+      </section>
+
+      <footer class="hd-footer">
+        <button id="hd-reset" class="hd-btn" type="button" data-i18n="resetToOfficial">Reset to Official</button>
+        <span id="hd-status" class="hd-status" role="status"></span>
+      </footer>
+    </main>
+    <script type="module" src="/src/appearance.ts"></script>
+  </body>
+</html>

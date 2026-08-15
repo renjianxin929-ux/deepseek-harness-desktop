@@ -1,0 +1,46 @@
+{
+  "id": "starter",
+  "name": "Starter (Sunset)",
+  "description": "A minimal, fully documented example theme. Copy this folder, change a few values, and you have your own appearance — no Harness Core changes required.",
+  "tokens": {
+    "light": {
+      "--dsw-alias-bg-base": "rgb(252, 249, 245)",
+      "--dsw-alias-bg-layer-1": "rgb(254, 252, 249)",
+      "--dsw-alias-bg-layer-2": "rgb(255, 255, 255)",
+      "--dsw-specific-sidebar-fill": "rgb(248, 243, 236)",
+      "--dsw-alias-brand-primary": "rgb(196, 92, 58)",
+      "--dsw-alias-brand-primary-new-colorprimary-new-color": "rgb(196, 92, 58)",
+      "--dsw-alias-state-business-primary": "rgb(196, 92, 58)",
+      "--dsw-alias-interactive-bg-hover": "rgba(196, 92, 58, 0.06)",
+      "--dsw-alias-interactive-bg-hover-accent": "rgba(196, 92, 58, 0.10)"
+    },
+    "dark": {
+      "--dsw-alias-bg-base": "rgb(26, 21, 20)",
+      "--dsw-alias-bg-layer-1": "rgb(32, 26, 24)",
+      "--dsw-alias-bg-layer-2": "rgb(38, 31, 28)",
+      "--dsw-specific-sidebar-fill": "rgb(22, 18, 17)",
+      "--dsw-alias-brand-primary": "rgb(234, 143, 110)",
+      "--dsw-alias-brand-primary-new-colorprimary-new-color": "rgb(234, 143, 110)",
+      "--dsw-alias-state-business-primary": "rgb(234, 143, 110)",
+      "--dsw-alias-interactive-bg-hover": "rgba(234, 143, 110, 0.08)",
+      "--dsw-alias-interactive-bg-hover-accent": "rgba(234, 143, 110, 0.14)"
+    }
+  },
+  "surfaces": {
+    "light": {
+      "--dsw-alias-bg-base": "rgba(252, 249, 245, 0.60)",
+      "--dsw-alias-bg-layer-1": "rgba(254, 252, 249, 0.66)",
+      "--dsw-alias-bg-layer-2": "rgba(255, 255, 255, 0.74)",
+      "--dsw-specific-sidebar-fill": "rgba(248, 243, 236, 0.55)"
+    },
+    "dark": {
+      "--dsw-alias-bg-base": "rgba(26, 21, 20, 0.55)",
+      "--dsw-alias-bg-layer-1": "rgba(32, 26, 24, 0.60)",
+      "--dsw-alias-bg-layer-2": "rgba(38, 31, 28, 0.68)",
+      "--dsw-specific-sidebar-fill": "rgba(22, 18, 17, 0.50)"
+    }
+  },
+  "components": "/* Component treatment example: round the message composer and tint the\n   text selection. Prefer stable selectors ([contenteditable], ::selection);\n   hashed class names change between upstream releases. */\n#root [contenteditable=\"true\"], #root textarea { border-radius: 14px; }\n#root :focus-visible { outline-color: var(--dsw-alias-brand-primary, rgb(196,92,58)); }\n#root ::selection { background: rgba(196, 92, 58, 0.20); }",
+  "motion": "/* Motion example: a slow, decorative ambient drift. Automatically disabled\n   under prefers-reduced-motion and the Appearance > Motion toggle. */\n@keyframes hd-starter-drift { from { background-position: 0 0; } to { background-position: 0 80px; } }\n#root > * { animation: hd-starter-drift 26s linear infinite; }",
+  "asset": "linear-gradient(180deg, #3a1d2e 0%, #2a1520 34%, #1c1116 100%)"
+}

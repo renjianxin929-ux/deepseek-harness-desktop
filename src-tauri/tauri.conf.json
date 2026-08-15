@@ -10,20 +10,8 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [
-      {
-        "label": "main",
-        "title": "Harness Desktop",
-        "width": 1280,
-        "height": 800,
-        "minWidth": 960,
-        "minHeight": 600,
-        "center": true,
-        "resizable": true
-      }
-    ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; img-src 'self' data: hd-wallpaper:; font-src 'self' data:"
     }
   },
   "bundle": {

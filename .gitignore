@@ -4,3 +4,8 @@ src-tauri/target/
 src-tauri/gen/
 .DS_Store
 *.log
+
+# Local dev/test artifacts (never committed)
+.hd-config/
+.vision/
+.dsh-vision-toolkit/

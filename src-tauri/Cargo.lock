@@ -1214,7 +1214,10 @@ dependencies = [
 name = "harness-desktop"
 version = "0.1.0"
 dependencies = [
+ "cssparser",
  "libc",
+ "precomputed-hash",
+ "selectors",
  "serde",
  "serde_json",
  "signal-hook",
