@@ -64,4 +64,31 @@ mod tests {
             "guard must not use the global any-running heuristic"
         );
     }
+
+    #[test]
+    fn guard_script_has_no_dom_freshness_dependency() {
+        // V0.1 stale-session fail-safe: the guard polls the current session's
+        // backend truth while the client shows running, and must NOT gate
+        // reconciliation on a
+        // DOM-mutation quiet window. A ticking elapsed clock (or continuous DOM
+        // churn) can therefore never suppress a reconciliation.
+        assert!(SCRIPT.contains("POLL_INTERVAL_MS"));
+        assert!(SCRIPT.contains("= 30000"));
+        assert!(
+            !SCRIPT.contains("STALE_AFTER_MS"),
+            "the stale quiet window must be removed"
+        );
+        assert!(
+            !SCRIPT.contains("MutationObserver"),
+            "DOM-mutation tracking must be removed"
+        );
+        assert!(
+            !SCRIPT.contains("COSMETIC_SELECTOR"),
+            "cosmetic DOM filtering must be removed"
+        );
+        assert!(
+            !SCRIPT.contains("lastProgressAt"),
+            "last-progress timestamp must be removed"
+        );
+    }
 }

@@ -7,11 +7,12 @@
 // minimal reconciliation fail-safe and nothing else.
 //
 // Behavior:
-//   * observes the client's running state (the composer Stop control) and real
-//     progress (DOM mutations outside cosmetic status/clock regions),
-//   * only after a heartbeat of quiet (no real progress for the stale window)
-//     reads the backend's authoritative state via the official read-only
-//     `POST /api/session.list`,
+//   * observes the client's running state (the composer Stop control) ONLY —
+//     it never tries to infer progress from DOM mutations, so cosmetic timer
+//     ticks or continuous DOM churn cannot suppress a reconciliation,
+//   * while the client shows a turn running, polls the backend's authoritative
+//     state every POLL_INTERVAL_MS via the official read-only
+//     `POST /api/session.list` (DOM freshness is NOT a precondition),
 //   * reconciles against the CURRENT session only (the official persisted
 //     selection under localStorage["dsh.sessions.current"]), so a completed
 //     session A still reconciles even while unrelated sessions B/C are running,
@@ -26,13 +27,11 @@
 (function () {
   "use strict";
 
-  var ENGINE_VERSION = 1;
+  var ENGINE_VERSION = 2;
 
-  // Heartbeat cadence and the stale window. The stale window is deliberately
-  // longer than the heartbeat so a single missed heartbeat never triggers a
-  // reconciliation.
-  var HEARTBEAT_MS = 30000;
-  var STALE_AFTER_MS = 90000;
+  // How often, while the client shows a turn running, to re-read the current
+  // session's authoritative backend state.
+  var POLL_INTERVAL_MS = 30000;
   var QUERY_TIMEOUT_MS = 8000;
 
   // The composer renders a stop square (<svg><rect x=3 y=3 width=10 height=10
@@ -40,12 +39,6 @@
   // square is the structural, locale-independent "client believes running"
   // signal.
   var STOP_RECT_SELECTOR = 'svg rect[width="10"][height="10"]';
-
-  // Auto-ticking decorative regions (the "Deep diving..." elapsed clock and the
-  // retry countdown) live under aria-hidden / role=status / aria-live. Mutations
-  // inside them are NOT progress — filtering them out is what lets a genuinely
-  // stuck client (whose clock keeps ticking) be detected.
-  var COSMETIC_SELECTOR = '[aria-hidden="true"], [role="status"], [aria-live]';
 
   // The official client persists the currently-selected session id under this
   // exact localStorage key (the durable half of its `list.current`). Reading it
@@ -60,9 +53,7 @@
 
   var booted = false;
   var bootTimer = null;
-  var observer = null;
   var heartbeat = null;
-  var lastProgressAt = 0;
   var reconciled = false;
 
   function log() {
@@ -100,21 +91,21 @@
   // Pure decision helpers (no DOM, no network — exercised by unit tests).
   // -------------------------------------------------------------------------
 
-  // A backend read is only warranted once the client believes it is running
-  // AND has had no real progress for at least `staleAfterMs`.
-  function shouldQueryBackend(clientRunning, lastProgressAgeMs, staleAfterMs) {
-    return !!clientRunning && lastProgressAgeMs >= staleAfterMs;
+  // A backend read is warranted whenever the client believes it is running.
+  // DOM freshness is deliberately NOT a factor: cosmetic clocks and continuous
+  // DOM mutations must never suppress a reconciliation.
+  function shouldQueryBackend(clientRunning) {
+    return !!clientRunning;
   }
 
-  // Map (client belief, quiet duration, per-current-session backend truth) to
-  // one action.
-  //   "noop"      — nothing to do (idle, still progressing, current session
-  //                 genuinely running, or current session unknown)
+  // Map (client belief, per-current-session backend truth) to one action.
+  //   "noop"      — nothing to do (idle, current session genuinely running,
+  //                 or current session unknown)
   //   "reconcile" — backend says the CURRENT session is not running while the
   //                 client still shows it running
   //   "reconnect" — backend truth is unreadable; show the re-syncing banner
-  function resolveDecision(clientRunning, lastProgressAgeMs, staleAfterMs, backend) {
-    if (!shouldQueryBackend(clientRunning, lastProgressAgeMs, staleAfterMs)) {
+  function resolveDecision(clientRunning, backend) {
+    if (!shouldQueryBackend(clientRunning)) {
       return "noop";
     }
     if (!backend || backend.reachable !== true) {
@@ -193,28 +184,6 @@
     }
   }
 
-  // True when `node` (or its element ancestor) is inside a cosmetic status/
-  // clock region whose mutations must not count as progress.
-  function isCosmetic(node) {
-    try {
-      var n = node;
-      if (n && n.nodeType === 3) n = n.parentNode; // text node -> element
-      while (n && n.nodeType === 1 && n !== document.body) {
-        if (typeof n.matches === "function" && n.matches(COSMETIC_SELECTOR)) {
-          return true;
-        }
-        n = n.parentNode;
-      }
-      return false;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // DOM observation
-  // -------------------------------------------------------------------------
-
   function isVisible(el) {
     try {
       if (typeof el.getClientRects !== "function") return true;
@@ -224,6 +193,8 @@
     }
   }
 
+  // The client believes it is running while any enabled, visible button holds
+  // the composer's stop square.
   function detectRunning() {
     var buttons;
     try {
@@ -235,21 +206,6 @@
       if (isStopControl(buttons[i]) && isVisible(buttons[i])) return true;
     }
     return false;
-  }
-
-  function startObserver() {
-    if (observer) return;
-    if (typeof window.MutationObserver !== "function") return;
-    var root = rootEl() || document.body;
-    observer = new window.MutationObserver(function (records) {
-      for (var i = 0; i < records.length; i++) {
-        if (!isCosmetic(records[i].target)) {
-          lastProgressAt = Date.now();
-          break;
-        }
-      }
-    });
-    observer.observe(root, { subtree: true, childList: true, characterData: true });
   }
 
   // -------------------------------------------------------------------------
@@ -374,16 +330,15 @@
   function tick() {
     if (!booted || reconciled || !isHarnessPage()) return;
     var running = detectRunning();
-    var age = Date.now() - lastProgressAt;
 
-    if (!shouldQueryBackend(running, age, STALE_AFTER_MS)) {
+    if (!running) {
       clearOverlay();
       return;
     }
 
     queryBackend().then(function (backend) {
       if (reconciled) return;
-      var decision = resolveDecision(running, age, STALE_AFTER_MS, backend);
+      var decision = resolveDecision(running, backend);
       if (decision === "reconcile") {
         reconcile();
       } else if (decision === "reconnect") {
@@ -424,25 +379,20 @@
     }
     booted = true;
     if (window.__HD_GUARD_STATE__) window.__HD_GUARD_STATE__.booted = true;
-    lastProgressAt = Date.now();
-    startObserver();
-    heartbeat = setInterval(tick, HEARTBEAT_MS);
+    heartbeat = setInterval(tick, POLL_INTERVAL_MS);
   }
 
   // Pure helpers exposed for diagnostics and automated tests (no privileges).
   window.__HD_GUARD_INTERNALS__ = {
-    HEARTBEAT_MS: HEARTBEAT_MS,
-    STALE_AFTER_MS: STALE_AFTER_MS,
+    POLL_INTERVAL_MS: POLL_INTERVAL_MS,
     QUERY_TIMEOUT_MS: QUERY_TIMEOUT_MS,
     STOP_RECT_SELECTOR: STOP_RECT_SELECTOR,
-    COSMETIC_SELECTOR: COSMETIC_SELECTOR,
     SESSION_SELECTION_KEY: SESSION_SELECTION_KEY,
     shouldQueryBackend: shouldQueryBackend,
     resolveDecision: resolveDecision,
     currentSessionId: currentSessionId,
     parseSessionList: parseSessionList,
     isStopControl: isStopControl,
-    isCosmetic: isCosmetic,
   };
 
   window.__HD_GUARD_STATE__ = {

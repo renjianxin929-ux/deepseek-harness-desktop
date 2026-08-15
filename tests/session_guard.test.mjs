@@ -1,5 +1,5 @@
 // Node-based regression tests for the stale session guard's pure decision
-// logic (run without a browser). Covers the V0.1 acceptance matrix:
+// logic (run without a browser). Covers the acceptance matrix:
 //
 //   A. NORMAL_RUNNING_NO_INTERFERENCE
 //   B. STALE_CLIENT_BACKEND_COMPLETED
@@ -12,6 +12,13 @@
 //   CURRENT_COMPLETED_OTHER_SESSION_RUNNING   => RECONCILE
 //   CURRENT_RUNNING_OTHER_SESSION_COMPLETED   => NOOP
 //   THREE_CONCURRENT_SESSIONS_CURRENT_COMPLETED => RECONCILE
+//
+// and the regressions proving DOM freshness is no longer a precondition:
+//
+//   CLIENT_RUNNING_TIMER_MUTATES_BACKEND_COMPLETED          => RECONCILE
+//   CLIENT_RUNNING_CONTINUOUS_DOM_MUTATIONS_BACKEND_COMPLETED => RECONCILE
+//   CLIENT_RUNNING_BACKEND_RUNNING                          => NOOP
+//   CURRENT_COMPLETED_OTHER_SESSIONS_RUNNING                => RECONCILE
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -62,20 +69,17 @@ function loadGuard() {
 
 const sandbox = loadGuard();
 const {
-  STALE_AFTER_MS,
+  POLL_INTERVAL_MS,
   STOP_RECT_SELECTOR,
   shouldQueryBackend,
   resolveDecision,
   currentSessionId,
   parseSessionList,
   isStopControl,
-  isCosmetic,
 } = sandbox.window.__HD_GUARD_INTERNALS__;
 
 const RUNNING = true;
 const IDLE = false;
-const stale = STALE_AFTER_MS; // >= stale window (quiet long enough)
-const fresh = STALE_AFTER_MS - 1; // recent progress
 
 const RUNNING_TRUE = { reachable: true, currentRunning: true };
 const RUNNING_FALSE = { reachable: true, currentRunning: false };
@@ -83,23 +87,35 @@ const RUNNING_UNKNOWN = { reachable: true, currentRunning: null };
 const UNREACHABLE = { reachable: false, currentRunning: null };
 
 // ---------------------------------------------------------------------------
+// DOM freshness is no longer a precondition. The decision function takes
+// only (clientRunning, backend) — there is no quiet window and no DOM-mutation
+// tracking at all, so cosmetic clocks or continuous mutations can never refresh
+// a "last progress" timestamp and suppress reconciliation.
+// ---------------------------------------------------------------------------
+assert.strictEqual(POLL_INTERVAL_MS, 30000, "poll interval must be 30s");
+assert.ok(!guardSrc.includes("STALE_AFTER_MS"), "stale window must be removed");
+assert.ok(!guardSrc.includes("MutationObserver"), "DOM-mutation tracking must be removed");
+assert.ok(!guardSrc.includes("COSMETIC_SELECTOR"), "cosmetic DOM filtering must be removed");
+assert.ok(!guardSrc.includes("lastProgressAt"), "last-progress timestamp must be removed");
+assert.ok(!guardSrc.includes("isCosmetic"), "cosmetic-mutation helper must be removed");
+
+// ---------------------------------------------------------------------------
 // A. NORMAL_RUNNING_NO_INTERFERENCE
 //    client running + current session genuinely running => noop.
 // ---------------------------------------------------------------------------
-assert.strictEqual(shouldQueryBackend(RUNNING, fresh, STALE_AFTER_MS), false,
-  "recent progress must not warrant a backend read");
-assert.strictEqual(resolveDecision(RUNNING, fresh, STALE_AFTER_MS, RUNNING_TRUE), "noop");
-// Even when quiet longer than the window, backend truth (still running) wins:
-assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, RUNNING_TRUE), "noop");
-// Idle client never triggers anything either:
-assert.strictEqual(resolveDecision(IDLE, stale, STALE_AFTER_MS, RUNNING_FALSE), "noop");
+assert.strictEqual(shouldQueryBackend(RUNNING), true,
+  "client running must warrant a backend read");
+assert.strictEqual(shouldQueryBackend(IDLE), false,
+  "idle client must not warrant a backend read");
+assert.strictEqual(resolveDecision(RUNNING, RUNNING_TRUE), "noop");
+assert.strictEqual(resolveDecision(IDLE, RUNNING_FALSE), "noop");
 
 // ---------------------------------------------------------------------------
 // B. STALE_CLIENT_BACKEND_COMPLETED
-//    client running + long quiet + current session completed => reconcile.
+//    client running + current session completed => reconcile (regardless of how
+//    recently the DOM mutated).
 // ---------------------------------------------------------------------------
-assert.strictEqual(shouldQueryBackend(RUNNING, stale, STALE_AFTER_MS), true);
-assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, RUNNING_FALSE), "reconcile");
+assert.strictEqual(resolveDecision(RUNNING, RUNNING_FALSE), "reconcile");
 
 // ---------------------------------------------------------------------------
 // C. STALE_CLIENT_BACKEND_FAILED
@@ -107,23 +123,36 @@ assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, RUNNING_FALSE
 //    for the current session, so the guard maps them all to reconcile (recover
 //    the real state) and never re-executes the task.
 // ---------------------------------------------------------------------------
-assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, RUNNING_FALSE), "reconcile");
+assert.strictEqual(resolveDecision(RUNNING, RUNNING_FALSE), "reconcile");
 
 // ---------------------------------------------------------------------------
 // D. BACKEND_UNREACHABLE
-//    client running + long quiet + backend unreadable => reconnect banner,
+//    client running + backend unreadable => reconnect banner,
 //    never kill/restart/cancel.
 // ---------------------------------------------------------------------------
-assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, UNREACHABLE), "reconnect");
-assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, null), "reconnect");
-assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, undefined), "reconnect");
+assert.strictEqual(resolveDecision(RUNNING, UNREACHABLE), "reconnect");
+assert.strictEqual(resolveDecision(RUNNING, null), "reconnect");
+assert.strictEqual(resolveDecision(RUNNING, undefined), "reconnect");
 
 // ---------------------------------------------------------------------------
-// Multi-session correctness regressions.
+// New regressions.
 // ---------------------------------------------------------------------------
 
-// CURRENT_COMPLETED_OTHER_SESSION_RUNNING => RECONCILE
-// Session A is the current (stale running) session and is completed on the
+// CLIENT_RUNNING_TIMER_MUTATES_BACKEND_COMPLETED => RECONCILE
+// The "Deep diving..." elapsed timer (and any other cosmetic mutation) can no
+// longer refresh a quiet-window timestamp, because there is no such timestamp.
+assert.strictEqual(resolveDecision(RUNNING, RUNNING_FALSE), "reconcile");
+
+// CLIENT_RUNNING_CONTINUOUS_DOM_MUTATIONS_BACKEND_COMPLETED => RECONCILE
+// Continuous (non-cosmetic) DOM churn must NOT suppress reconciliation either.
+assert.strictEqual(resolveDecision(RUNNING, RUNNING_FALSE), "reconcile");
+
+// CLIENT_RUNNING_BACKEND_RUNNING => NOOP
+// A genuinely running current session must never be reloaded.
+assert.strictEqual(resolveDecision(RUNNING, RUNNING_TRUE), "noop");
+
+// CURRENT_COMPLETED_OTHER_SESSIONS_RUNNING => RECONCILE
+// Session A is the current (running-believing) session and is completed on the
 // backend, while unrelated sessions B and C are genuinely running. The guard
 // must reconcile A instead of being suppressed by B/C.
 {
@@ -134,8 +163,12 @@ assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, undefined), "
   ];
   const truth = parseSessionList({ result: { ok: true, value: { items } } }, "A");
   assert.deepStrictEqual(JSON.parse(JSON.stringify(truth)), { reachable: true, currentRunning: false });
-  assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, truth), "reconcile");
+  assert.strictEqual(resolveDecision(RUNNING, truth), "reconcile");
 }
+
+// ---------------------------------------------------------------------------
+// Multi-session correctness regressions (retained from V0.1).
+// ---------------------------------------------------------------------------
 
 // CURRENT_RUNNING_OTHER_SESSION_COMPLETED => NOOP
 // Session A is the current session and is genuinely running; B/C are completed.
@@ -148,7 +181,7 @@ assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, undefined), "
   ];
   const truth = parseSessionList({ result: { ok: true, value: { items } } }, "A");
   assert.deepStrictEqual(JSON.parse(JSON.stringify(truth)), { reachable: true, currentRunning: true });
-  assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, truth), "noop");
+  assert.strictEqual(resolveDecision(RUNNING, truth), "noop");
 }
 
 // THREE_CONCURRENT_SESSIONS_CURRENT_COMPLETED => RECONCILE
@@ -159,7 +192,7 @@ assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, undefined), "
     { sessionId: "C", running: true },
   ];
   const truth = parseSessionList({ result: { ok: true, value: { items } } }, "A");
-  assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, truth), "reconcile");
+  assert.strictEqual(resolveDecision(RUNNING, truth), "reconcile");
 }
 
 // ---------------------------------------------------------------------------
@@ -170,11 +203,9 @@ assert.strictEqual(resolveDecision(RUNNING, stale, STALE_AFTER_MS, undefined), "
 // ---------------------------------------------------------------------------
 const ALLOWED_ACTIONS = new Set(["noop", "reconcile", "reconnect"]);
 for (const clientRunning of [true, false]) {
-  for (const age of [0, STALE_AFTER_MS - 1, STALE_AFTER_MS, STALE_AFTER_MS * 3]) {
-    for (const backend of [RUNNING_TRUE, RUNNING_FALSE, RUNNING_UNKNOWN, UNREACHABLE, null]) {
-      const d = resolveDecision(clientRunning, age, STALE_AFTER_MS, backend);
-      assert.ok(ALLOWED_ACTIONS.has(d), `unexpected decision: ${d}`);
-    }
+  for (const backend of [RUNNING_TRUE, RUNNING_FALSE, RUNNING_UNKNOWN, UNREACHABLE, null]) {
+    const d = resolveDecision(clientRunning, backend);
+    assert.ok(ALLOWED_ACTIONS.has(d), `unexpected decision: ${d}`);
   }
 }
 
@@ -203,7 +234,7 @@ assert.ok(guardSrc.includes('"dsh.sessions.current"'));
 assert.ok(!guardSrc.includes("anyRunning"));
 
 // ---------------------------------------------------------------------------
-// currentSessionId / parseSessionList / isStopControl / isCosmetic unit checks
+// currentSessionId / parseSessionList / isStopControl unit checks
 // ---------------------------------------------------------------------------
 // Cross-realm note: vm-context return values carry that realm's prototype.
 const plain = (x) => JSON.parse(JSON.stringify(x));
@@ -277,20 +308,5 @@ assert.strictEqual(isStopControl(stopButton), true);
 assert.strictEqual(isStopControl(sendButton), false);
 assert.strictEqual(isStopControl(disabledButton), false);
 assert.strictEqual(isStopControl(null), false);
-
-const body = sandbox.document.body;
-assert.strictEqual(
-  isCosmetic({ nodeType: 1, matches: () => true, parentNode: body }),
-  true
-);
-assert.strictEqual(
-  isCosmetic({ nodeType: 1, matches: () => false, parentNode: body }),
-  false
-);
-// A text node under a cosmetic element is cosmetic (elapsed-clock tick):
-assert.strictEqual(
-  isCosmetic({ nodeType: 3, parentNode: { nodeType: 1, matches: () => true, parentNode: body } }),
-  true
-);
 
 console.log("session_guard.test.mjs: all assertions passed");
