@@ -1,7 +1,7 @@
 # Starter theme — make your own appearance in ~10–20 minutes
 
 This folder is a **copyable template**. You never edit Harness Core; you only
-edit this JSON. Harness Desktop turns it into a `<style>` overlay on top of the
+edit this JSON. DeepSeek Harness Desktop turns it into a `<style>` overlay on top of the
 official DeepSeek Harness UI.
 
 ## 1. Copy the folder
@@ -12,7 +12,7 @@ Copy this whole folder somewhere convenient and rename the folder to your theme 
 cp -R themes/starter ~/Library/Application\ Support/com.deepseek.harnessdesktop/themes/sunset
 ```
 
-The folder name (`sunset`) becomes the theme id. Relaunch Harness Desktop, open
+The folder name (`sunset`) becomes the theme id. Relaunch DeepSeek Harness Desktop, open
 **Appearance**, and your theme appears in the list.
 
 > Built-in themes (`official`, `ocean`, `starter`) live inside the app; anything
@@ -131,5 +131,5 @@ you only need to override the ones you care about.
 - Keep colors readable: prefer a readability overlay (in the Appearance
   window) and avoid very low-contrast `label-primary` vs `bg-base` pairs.
 
-That's the whole model. Ship a folder, share it, and it loads anywhere Harness
+That's the whole model. Ship a folder, share it, and it loads anywhere DeepSeek Harness
 Desktop runs.

@@ -1,4 +1,4 @@
-//! Harness Desktop — appearance system (surface layer only).
+//! DeepSeek Harness Desktop — appearance system (surface layer only).
 //!
 //! This module owns the DIY appearance layer that sits *on top of* the
 //! official DeepSeek Harness Web UI without ever modifying Harness Core:

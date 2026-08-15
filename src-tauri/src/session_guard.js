@@ -1,4 +1,4 @@
-// Harness Desktop — stale session guard (fail-safe only).
+// DeepSeek Harness Desktop — stale session guard (fail-safe only).
 //
 // Injected alongside the appearance engine into the official DeepSeek Harness
 // Web UI. The WebView's client state can drift from the backend's session
@@ -59,7 +59,7 @@
   function log() {
     try {
       if (window.console && console.info) {
-        console.info.apply(console, ["[Harness Desktop session guard]"].concat(
+        console.info.apply(console, ["[DeepSeek Harness Desktop session guard]"].concat(
           Array.prototype.slice.call(arguments)
         ));
       }

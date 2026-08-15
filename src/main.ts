@@ -1,4 +1,4 @@
-// Harness Desktop V0.1 — startup/loading layer.
+// DeepSeek Harness Desktop V0.1 — startup/loading layer.
 // Shows progress from the Rust backend, then the WebView is navigated to the
 // official DeepSeek Harness Web UI (http://127.0.0.1:<dynamic-port>).
 import { invoke } from "@tauri-apps/api/core";

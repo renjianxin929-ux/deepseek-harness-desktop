@@ -1,4 +1,4 @@
-//! Harness Desktop V0.1 — Rust backend.
+//! DeepSeek Harness Desktop V0.1 — Rust backend.
 //!
 //! Responsibilities:
 //!   * resolve the Node / dsh runtime the user actually uses
@@ -473,7 +473,7 @@ pub fn resolve_runtime() -> Result<Resolved, String> {
                         });
                     }
                     return Err(format!(
-                        "Found dsh at {} with version {ver}, expected {REQUIRED_VERSION}. Refusing to start: Harness Desktop never silently upgrades or downgrades Harness.",
+                        "Found dsh at {} with version {ver}, expected {REQUIRED_VERSION}. Refusing to start: DeepSeek Harness Desktop never silently upgrades or downgrades Harness.",
                         cand.path.display()
                     ));
                 }
@@ -758,7 +758,7 @@ fn start_flow(app: &AppHandle) {
     if version != REQUIRED_VERSION {
         set_status(app, error_payload(
             format!(
-                "Detected Harness version {version}, but Harness Desktop requires exactly {REQUIRED_VERSION}. Refusing to start: no silent upgrade or downgrade."
+                "Detected Harness version {version}, but DeepSeek Harness Desktop requires exactly {REQUIRED_VERSION}. Refusing to start: no silent upgrade or downgrade."
             ),
             version,
             resolved.runtime.node.display().to_string(),
@@ -1030,10 +1030,10 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Resul
     let appearance_item = MenuItemBuilder::with_id("appearance", "Appearance…")
         .accelerator("CmdOrCtrl+,")
         .build(manager)?;
-    let app_menu = SubmenuBuilder::new(manager, "Harness Desktop")
+    let app_menu = SubmenuBuilder::new(manager, "DeepSeek Harness Desktop")
         .item(&PredefinedMenuItem::about(
             manager,
-            Some("About Harness Desktop"),
+            Some("About DeepSeek Harness Desktop"),
             None,
         )?)
         .separator()
@@ -1041,7 +1041,7 @@ fn build_app_menu<R: tauri::Runtime, M: Manager<R>>(manager: &M) -> tauri::Resul
         .separator()
         .item(&PredefinedMenuItem::quit(
             manager,
-            Some("Quit Harness Desktop"),
+            Some("Quit DeepSeek Harness Desktop"),
         )?)
         .build()?;
     // Replacing the app menu via `set_menu` removes Tauri's default macOS menu,
@@ -1138,7 +1138,7 @@ pub fn run() {
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
             )
-            .title("Harness Desktop")
+            .title("DeepSeek Harness Desktop")
             .inner_size(1280.0, 800.0)
             .min_inner_size(960.0, 600.0)
             .center()
@@ -1195,7 +1195,7 @@ pub fn run() {
             appearance::reset_appearance
         ])
         .build(tauri::generate_context!())
-        .expect("error while building Harness Desktop");
+        .expect("error while building DeepSeek Harness Desktop");
 
     app.run(|app_handle, event| match event {
         // Window close (last window destroyed) and app.exit() go through here.

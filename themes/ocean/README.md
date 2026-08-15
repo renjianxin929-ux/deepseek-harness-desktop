@@ -1,6 +1,6 @@
 # Ocean — showcase theme
 
-Ocean is the polished showcase for the Harness Desktop appearance system. It is
+Ocean is the polished showcase for the DeepSeek Harness Desktop appearance system. It is
 an *example of the system*, not the architecture itself — every effect here is
 expressible in a plain `theme.json` (see [`../starter/README.md`](../starter/README.md)).
 

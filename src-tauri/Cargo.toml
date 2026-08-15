@@ -1,7 +1,7 @@
 [package]
-name = "harness-desktop"
+name = "deepseek-harness-desktop"
 version = "0.1.0"
-description = "Harness Desktop — macOS launcher for DeepSeek Harness 0.1.0-rc.6"
+description = "DeepSeek Harness Desktop — macOS launcher for DeepSeek Harness 0.1.0-rc.6"
 authors = ["renjianxin"]
 edition = "2021"
 rust-version = "1.77"

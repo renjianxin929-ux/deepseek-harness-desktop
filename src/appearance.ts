@@ -1,4 +1,4 @@
-// Harness Desktop — appearance settings window.
+// DeepSeek Harness Desktop — appearance settings window.
 // Communicates with the Rust backend over Tauri IPC (this window runs on the
 // app's own origin). Wallpaper selection reads the file in the browser and
 // sends its bytes to Rust; the image never leaves the machine.

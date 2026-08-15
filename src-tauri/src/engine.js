@@ -1,4 +1,4 @@
-// Harness Desktop — injected appearance engine (surface layer only).
+// DeepSeek Harness Desktop — injected appearance engine (surface layer only).
 //
 // This script is injected by the Rust backend into every page loaded in the
 // main WebView (both the local loading page and the official DeepSeek Harness
@@ -50,7 +50,7 @@
   function log() {
     try {
       if (window.console && console.info) {
-        console.info.apply(console, ["[Harness Desktop appearance]"].concat(
+        console.info.apply(console, ["[DeepSeek Harness Desktop appearance]"].concat(
           Array.prototype.slice.call(arguments)
         ));
       }
