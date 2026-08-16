@@ -15,7 +15,7 @@
 //! legacy system-runtime resolution in `lib.rs` is a dev-only path and is
 //! documented as such, not moved here.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::time::{Duration, Instant};
 
@@ -155,6 +155,67 @@ pub fn path_separator() -> &'static str {
         ";"
     } else {
         ":"
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Process-execution path normalization
+// ---------------------------------------------------------------------------
+
+/// Convert a Windows verbatim / extended-length path into an ordinary Win32
+/// path. On Windows, `fs::canonicalize()` and Tauri's `resource_dir()` return
+/// paths with a `\\?\` prefix:
+///
+/// ```text
+/// \\?\E:\DeepSeek Harness Desktop\...\node.exe   (verbatim drive)
+/// \\?\UNC\server\share\...\node.exe              (verbatim UNC)
+/// ```
+///
+/// These verbatim forms remain valid for filesystem APIs (`exists`, `read`,
+/// `canonicalize`, checksum), but Node.js's module resolver mishandles them
+/// when they are used as the child process's main entry (`argv[1]`) or working
+/// directory — it resolves the `E:` drive root as a directory and fails with
+/// `EISDIR`. This helper converts the verbatim form to the ordinary Win32 form
+/// at the *process-execution boundary only*:
+///
+/// ```text
+/// \\?\E:\foo\bar            -> E:\foo\bar
+/// \\?\UNC\server\share\foo  -> \\server\share\foo
+/// ```
+///
+/// It is a pure string transform with no filesystem access, so it is safe to
+/// unit test on any host. Anything that is not a verbatim path (an already
+/// ordinary path, a plain UNC path, or a non-Windows path) is returned
+/// unchanged, so it never corrupts UNC semantics or non-Windows paths.
+// On non-Windows hosts the verbatim prefix never occurs, so this helper is
+// only exercised by the unit tests there (and by `process_path` on Windows).
+#[cfg_attr(not(windows), allow(dead_code))]
+pub fn strip_verbatim_prefix(input: &str) -> String {
+    // Verbatim UNC: `\\?\UNC\server\share\...` -> `\\server\share\...`.
+    // (Do NOT reduce this to a drive path; UNC semantics must be preserved.)
+    if let Some(rest) = input.strip_prefix(r"\\?\UNC\") {
+        return format!(r"\\{rest}");
+    }
+    // Verbatim drive: `\\?\C:\...` -> `C:\...`.
+    if let Some(rest) = input.strip_prefix(r"\\?\") {
+        return rest.to_string();
+    }
+    input.to_string()
+}
+
+/// Normalize a path for hand-off to a spawned process. On Windows this strips
+/// the verbatim prefix (see [`strip_verbatim_prefix`]); on every other platform
+/// it is the identity. Filesystem / integrity resolution keeps the raw path —
+/// only values handed to `Command` (executable, arguments, cwd, PATH) go
+/// through here.
+pub fn process_path(path: &Path) -> PathBuf {
+    #[cfg(windows)]
+    {
+        PathBuf::from(strip_verbatim_prefix(&path.to_string_lossy()))
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_path_buf()
     }
 }
 
@@ -428,6 +489,69 @@ mod tests {
         assert_eq!(path_separator(), ";");
         #[cfg(not(windows))]
         assert_eq!(path_separator(), ":");
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_ordinary_path_unchanged() {
+        // Ordinary drive path (already a normal Win32 path).
+        let ordinary = r"C:\Program Files\DeepSeek Harness Desktop\node.exe";
+        assert_eq!(strip_verbatim_prefix(ordinary), ordinary);
+        // Plain UNC path (no verbatim prefix) is untouched.
+        let unc = r"\\server\share\DeepSeek Harness Desktop\node.exe";
+        assert_eq!(strip_verbatim_prefix(unc), unc);
+        // Relative / bare file name is untouched.
+        assert_eq!(strip_verbatim_prefix("node.exe"), "node.exe");
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_verbatim_drive() {
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\C:\Program Files\DeepSeek Harness Desktop\node.exe"),
+            r"C:\Program Files\DeepSeek Harness Desktop\node.exe"
+        );
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_verbatim_unc() {
+        assert_eq!(
+            strip_verbatim_prefix(r"\\?\UNC\server\share\DeepSeek Harness Desktop\node.exe"),
+            r"\\server\share\DeepSeek Harness Desktop\node.exe"
+        );
+    }
+
+    #[test]
+    fn strip_verbatim_prefix_non_windows_unchanged() {
+        // Non-Windows paths must never be altered.
+        assert_eq!(strip_verbatim_prefix("/usr/local/bin/node"), "/usr/local/bin/node");
+        assert_eq!(
+            strip_verbatim_prefix("/Users/me/DeepSeek Harness Desktop/node"),
+            "/Users/me/DeepSeek Harness Desktop/node"
+        );
+    }
+
+    #[test]
+    fn process_path_identity_and_boundary() {
+        // On non-Windows hosts `process_path` must be the identity (the
+        // verbatim prefix only ever appears on Windows).
+        #[cfg(not(windows))]
+        {
+            let p = Path::new("/usr/local/bin/node");
+            assert_eq!(process_path(p), p);
+        }
+        // On Windows it strips the verbatim prefix at the process boundary.
+        #[cfg(windows)]
+        {
+            let verbatim = Path::new(r"\\?\E:\DeepSeek Harness Desktop\runtime\node.exe");
+            assert_eq!(
+                process_path(verbatim),
+                PathBuf::from(r"E:\DeepSeek Harness Desktop\runtime\node.exe")
+            );
+            let verbatim_unc = Path::new(r"\\?\UNC\server\share\DeepSeek Harness Desktop\node.exe");
+            assert_eq!(
+                process_path(verbatim_unc),
+                PathBuf::from(r"\\server\share\DeepSeek Harness Desktop\node.exe")
+            );
+        }
     }
 
     #[test]

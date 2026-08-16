@@ -371,13 +371,15 @@ fn probe_npx_version(node: &Path, npx: &Path) -> Result<String, String> {
 }
 
 fn probe_version(rt: &Runtime) -> Result<String, String> {
-    let mut cmd = Command::new(&rt.node);
+    // Node and the entry path may carry a Windows verbatim prefix (`\\?\E:\...`)
+    // from the bundled-runtime resolver. Normalize at the process boundary only.
+    let mut cmd = Command::new(platform::process_path(&rt.node));
     match &rt.invocation {
         Invocation::Direct { bin_js } => {
-            cmd.arg(bin_js).arg("--version");
+            cmd.arg(platform::process_path(bin_js)).arg("--version");
         }
         Invocation::Npx { npx } => {
-            cmd.arg(npx)
+            cmd.arg(platform::process_path(npx))
                 .arg("-y")
                 .arg(format!("{DSH_PACKAGE}@{REQUIRED_VERSION}"))
                 .arg("--version");
@@ -821,13 +823,18 @@ fn start_flow(app: &AppHandle) {
     );
 
     // Build: node <dsh entry> web --host 127.0.0.1 --port 0   (port 0 => OS picks a free port)
-    let mut cmd = Command::new(&resolved.runtime.node);
+    // Normalize every process-boundary path: the bundled node executable, the
+    // entry script, and the runtime-derived PATH dir may all carry a Windows
+    // verbatim prefix (`\\?\E:\...`); Node's module resolver rejects the
+    // verbatim entry path (EISDIR on the drive root). Filesystem resolution
+    // above kept the raw path — only the values handed to `Command` change.
+    let mut cmd = Command::new(platform::process_path(&resolved.runtime.node));
     match &resolved.runtime.invocation {
         Invocation::Direct { bin_js } => {
-            cmd.arg(bin_js);
+            cmd.arg(platform::process_path(bin_js));
         }
         Invocation::Npx { npx } => {
-            cmd.arg(npx)
+            cmd.arg(platform::process_path(npx))
                 .arg("-y")
                 .arg(format!("{DSH_PACKAGE}@{REQUIRED_VERSION}"));
         }
@@ -843,7 +850,7 @@ fn start_flow(app: &AppHandle) {
     let sep = platform::path_separator();
     let mut path = String::new();
     if let Some(dir) = resolved.runtime.node.parent() {
-        path.push_str(&format!("{}{}", dir.display(), sep));
+        path.push_str(&format!("{}{}", platform::process_path(dir).display(), sep));
     }
     if !resolved.shell_path.is_empty() {
         path.push_str(&resolved.shell_path);

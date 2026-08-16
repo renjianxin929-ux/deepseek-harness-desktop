@@ -29,7 +29,7 @@ use std::process::Command;
 
 use serde::Deserialize;
 
-use crate::platform::TargetIdentity;
+use crate::platform::{process_path, TargetIdentity};
 
 pub const RUNTIME_DIR_NAME: &str = "runtime";
 pub const MANIFEST_NAME: &str = "manifest.json";
@@ -254,7 +254,10 @@ pub fn resolve(runtime_root: &Path) -> Result<BundledRuntime, ResolveError> {
 
 /// Run `<node> --version` and return the trimmed stdout.
 pub fn probe_node_version(node: &Path) -> Result<String, String> {
-    let out = Command::new(node)
+    // The bundled `node` path may be a Windows verbatim path (`\\?\E:\...`)
+    // from Tauri's `resource_dir()`. Normalize only at the process-execution
+    // boundary; filesystem/integrity checks above keep the raw path.
+    let out = Command::new(process_path(node))
         .arg("--version")
         .output()
         .map_err(|e| format!("failed to run bundled Node {}: {e}", node.display()))?;

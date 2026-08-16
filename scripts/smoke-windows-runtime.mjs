@@ -13,7 +13,8 @@
 
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -103,6 +104,34 @@ if (process.platform === "win32") {
   const dshVer = execFileSync(nodeExe, [binJs, "--version"], { encoding: "utf8" }).trim();
   if (dshVer !== HARNESS_VERSION) fail(`dsh reported ${dshVer}, expected ${HARNESS_VERSION}`);
   ok(`dsh --version -> ${dshVer}`);
+
+  // Execution from an install-style path containing spaces. The packaged app
+  // lives under e.g. `E:\DeepSeek Harness Desktop\_up_\...`, so a structural
+  // existence check cannot prove the real launch shape works. Copy node.exe and
+  // a harmless entry script into a directory whose name has spaces, then run
+  // both `node.exe --version` and `node.exe <entry>` there — the exact
+  // executable + script-argument shape Harness Desktop uses to launch.
+  const spacedRoot = join(tmpdir(), "DeepSeek Harness Desktop smoke", `hd-${process.pid}`);
+  rmSync(spacedRoot, { recursive: true, force: true });
+  mkdirSync(spacedRoot, { recursive: true });
+  const spacedNodeExe = join(spacedRoot, "node.exe");
+  const spacedEntry = join(spacedRoot, "harness entry probe.js");
+  copyFileSync(nodeExe, spacedNodeExe);
+  writeFileSync(spacedEntry, "process.stdout.write('probe-ok\\n');\n");
+
+  const spacedNodeVer = execFileSync(spacedNodeExe, ["--version"], { encoding: "utf8" }).trim();
+  if (spacedNodeVer !== nodeVerRaw) {
+    fail(`spaced-path node.exe reported ${spacedNodeVer}, expected ${nodeVerRaw}`);
+  }
+  ok(`node.exe --version (spaced path) -> ${spacedNodeVer}`);
+
+  const spacedProbe = execFileSync(spacedNodeExe, [spacedEntry], { encoding: "utf8" }).trim();
+  if (spacedProbe !== "probe-ok") {
+    fail(`spaced-path entry probe produced ${JSON.stringify(spacedProbe)} instead of "probe-ok"`);
+  }
+  ok("bundled node.js entry probe (spaced path) -> probe-ok");
+
+  rmSync(spacedRoot, { recursive: true, force: true });
 } else {
   console.log(
     `[smoke] skip functional run on ${process.platform} (node.exe is a Windows binary; structural checks only)`
