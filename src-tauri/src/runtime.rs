@@ -379,11 +379,24 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    /// Relative node path for the current target, matching the real runtime
+    /// layout produced by `scripts/materialize-runtime.mjs` (macOS uses
+    /// `<id>/node/bin/node`; Windows uses `<id>/node/node.exe`).
+    fn fixture_node_rel() -> PathBuf {
+        let id = TargetIdentity::current().id;
+        if cfg!(windows) {
+            PathBuf::from(id).join("node").join("node.exe")
+        } else {
+            PathBuf::from(id).join("node").join("bin").join("node")
+        }
+    }
+
     fn write_runtime_fixture(root: &Path, node_script: &str) {
-        fs::create_dir_all(root.join("darwin-arm64/node/bin")).unwrap();
-        fs::create_dir_all(root.join("darwin-arm64/harness/node_modules/@deepseek-ai/dsh/lib"))
+        let id = TargetIdentity::current().id;
+        let node = root.join(fixture_node_rel());
+        fs::create_dir_all(node.parent().unwrap()).unwrap();
+        fs::create_dir_all(root.join(format!("{id}/harness/node_modules/@deepseek-ai/dsh/lib")))
             .unwrap();
-        let node = root.join("darwin-arm64/node/bin/node");
         let mut f = fs::File::create(&node).unwrap();
         f.write_all(node_script.as_bytes()).unwrap();
         #[cfg(unix)]
@@ -392,12 +405,12 @@ mod tests {
             let _ = fs::set_permissions(&node, fs::Permissions::from_mode(0o755));
         }
         fs::write(
-            root.join("darwin-arm64/harness/node_modules/@deepseek-ai/dsh/lib/bin.js"),
+            root.join(format!("{id}/harness/node_modules/@deepseek-ai/dsh/lib/bin.js")),
             "#!/usr/bin/env node\n",
         )
         .unwrap();
         fs::write(
-            root.join("darwin-arm64/harness/node_modules/@deepseek-ai/dsh/package.json"),
+            root.join(format!("{id}/harness/node_modules/@deepseek-ai/dsh/package.json")),
             r#"{"name":"@deepseek-ai/dsh","version":"0.1.0-rc.6"}"#,
         )
         .unwrap();
@@ -414,7 +427,7 @@ mod tests {
         let entry_sha = sha256_hex(&fs::read(&bin_js).unwrap());
         let targets = serde_json::json!({
             target_id: {
-                "node": format!("{target_id}/node/bin/node"),
+                "node": fixture_node_rel().to_string_lossy(),
                 "harness": format!("{target_id}/harness"),
                 "nodeSha256": node_sha,
                 "harnessEntrySha256": entry_sha
@@ -434,8 +447,7 @@ mod tests {
     }
 
     fn fixture_node_sha(root: &Path) -> String {
-        let target_id = TargetIdentity::current().id;
-        sha256_hex(&fs::read(root.join(format!("{target_id}/node/bin/node"))).unwrap())
+        sha256_hex(&fs::read(root.join(fixture_node_rel())).unwrap())
     }
 
     #[test]
@@ -452,6 +464,11 @@ mod tests {
         );
     }
 
+    // Unix-only: the fixture "node" is a `#!/bin/sh` script that must actually
+    // run to pass `probe_node_version` (a runnable fake node.exe cannot be
+    // created portably on Windows). Windows exercises the full resolve+run path
+    // against a real `node.exe` via the CI smoke script instead.
+    #[cfg(unix)]
     #[test]
     fn manifest_resolves_current_target() {
         let root = std::env::temp_dir().join(format!("hd-rt-{}", std::process::id()));
@@ -519,7 +536,7 @@ mod tests {
         let target_id = TargetIdentity::current().id;
         let targets = serde_json::json!({
             target_id: {
-                "node": format!("{target_id}/node/bin/node"),
+                "node": fixture_node_rel().to_string_lossy(),
                 "harness": format!("{target_id}/harness")
             }
         });

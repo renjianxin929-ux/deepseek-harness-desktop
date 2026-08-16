@@ -665,7 +665,7 @@ fn process_exited(state: &State<'_, AppState>) -> bool {
 }
 
 fn log_line(line: &str) {
-    let p = platform::home_dir().join("Library/Logs/HarnessDesktop/startup.log");
+    let p = platform::log_dir().join("startup.log");
     if let Some(parent) = p.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -1346,7 +1346,12 @@ pub fn run() {
             .resizable(true)
             .initialization_script(init_script)
             .on_navigation(move |url| {
-                if url.scheme() == "hd-appearance" {
+                // The appearance button navigates to the app's `hd-appearance`
+                // scheme. On macOS that is `hd-appearance://…`; on Windows the
+                // same scheme is registered as `http://hd-appearance.localhost/…`.
+                let is_appearance = url.scheme() == "hd-appearance"
+                    || (url.scheme() == "http" && url.host_str() == Some("hd-appearance.localhost"));
+                if is_appearance {
                     appearance::open_appearance_window(&nav_handle);
                     return false;
                 }
@@ -1433,6 +1438,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
     use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1457,6 +1463,10 @@ mod tests {
     /// (`npx -> npx-cli.js`, `npm -> npm-cli.js`). Canonicalizing the path must
     /// not be allowed to change the logical command identity, so `find_bin`
     /// still finds `npx`/`npm` by name while `node -> node` keeps passing.
+    ///
+    /// Unix-only: it exercises POSIX symlink semantics of the (dev-only) system
+    /// runtime resolver, which does not exist on Windows.
+    #[cfg(unix)]
     #[test]
     fn symlinked_npm_npx_keep_logical_identity_after_canonicalization() {
         let dir = temp_dir("symlinks");

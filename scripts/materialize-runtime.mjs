@@ -99,7 +99,23 @@ async function fetchBuffer(url) {
 }
 
 function run(cmd, args, opts = {}) {
-  execFileSync(cmd, args, { stdio: "inherit", ...opts });
+  if (process.platform === "win32") {
+    // On Windows, `npm`/`npx` resolve to `.cmd` shims (e.g. `npm.cmd`) that
+    // `execFileSync` cannot launch without a shell. Route through cmd.exe so
+    // the same pinned commands work unchanged; this is also fine for real
+    // `.exe` tools such as the bundled bsdtar (`tar.exe`).
+    const cmdline = [cmd, ...args.map((a) => quoteCmdArg(String(a)))].join(" ");
+    execFileSync("cmd.exe", ["/d", "/s", "/c", cmdline], { stdio: "inherit", ...opts });
+  } else {
+    execFileSync(cmd, args, { stdio: "inherit", ...opts });
+  }
+}
+
+// Minimal quoting for one argv token passed through cmd.exe. The materializer's
+// own arguments are ASCII flags/paths with no embedded quotes; quote only when
+// a token contains whitespace so `--out` paths with spaces keep working.
+function quoteCmdArg(a) {
+  return /[\s"]/.test(a) ? `"${a.replace(/"/g, '""')}"` : a;
 }
 
 async function materializeNode(targetId, spec, outDir, workDir) {

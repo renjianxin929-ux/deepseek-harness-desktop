@@ -168,6 +168,42 @@ pub fn app_origin_url() -> &'static str {
     }
 }
 
+/// URL for an app-registered custom URI scheme, expressed for the current
+/// platform. macOS/iOS register schemes as `<scheme>://<path>`; Windows/Android
+/// resolve registered schemes as `http://<scheme>.localhost/<path>`.
+pub fn custom_scheme_url(scheme: &str, path: &str) -> String {
+    if cfg!(windows) || cfg!(target_os = "android") {
+        format!("http://{scheme}.localhost/{path}")
+    } else {
+        format!("{scheme}://{path}")
+    }
+}
+
+/// Platform-appropriate directory for Desktop host logs.
+///
+/// * macOS: `~/Library/Logs/HarnessDesktop` (unchanged V0.1/V0.2 path).
+/// * Windows: `%LOCALAPPDATA%\HarnessDesktop\logs`, falling back to
+///   `%USERPROFILE%\AppData\Local\HarnessDesktop\logs` (never a Unix path).
+pub fn log_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        if let Ok(l) = std::env::var("LOCALAPPDATA") {
+            if !l.is_empty() {
+                return PathBuf::from(l).join("HarnessDesktop").join("logs");
+            }
+        }
+        home_dir().join("AppData").join("Local").join("HarnessDesktop").join("logs")
+    }
+    #[cfg(unix)]
+    {
+        home_dir().join("Library/Logs/HarnessDesktop")
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        std::env::temp_dir().join("harness-desktop")
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Platform capability map
 // ---------------------------------------------------------------------------
@@ -407,6 +443,25 @@ mod tests {
         let h = home_dir();
         assert!(!h.as_os_str().is_empty());
         assert!(h.is_absolute());
+    }
+
+    #[test]
+    fn custom_scheme_url_is_platform_aware() {
+        #[cfg(windows)]
+        assert_eq!(
+            custom_scheme_url("hd-wallpaper", "current?v=1"),
+            "http://hd-wallpaper.localhost/current?v=1"
+        );
+        #[cfg(not(windows))]
+        assert_eq!(
+            custom_scheme_url("hd-wallpaper", "current?v=1"),
+            "hd-wallpaper://current?v=1"
+        );
+    }
+
+    #[test]
+    fn log_dir_is_absolute() {
+        assert!(log_dir().is_absolute());
     }
 
     #[cfg(unix)]

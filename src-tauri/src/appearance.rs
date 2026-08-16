@@ -1065,7 +1065,10 @@ pub fn engine_payload(state: &AppearanceState) -> Result<serde_json::Value, Stri
         .clone();
     let theme = resolve_theme(state, &cfg.theme)?;
     let wallpaper_url = if cfg.wallpaper.active && cfg.wallpaper.file_name.is_some() {
-        format!("hd-wallpaper://current?v={}", cfg.wallpaper.version)
+        crate::platform::custom_scheme_url(
+            "hd-wallpaper",
+            &format!("current?v={}", cfg.wallpaper.version),
+        )
     } else {
         String::new()
     };
@@ -1536,7 +1539,10 @@ mod tests {
             cfg.wallpaper.version = 7;
         }
         let p = engine_payload(&state).unwrap();
-        assert_eq!(p["wallpaper"]["url"], "hd-wallpaper://current?v=7");
+        assert_eq!(
+            p["wallpaper"]["url"],
+            crate::platform::custom_scheme_url("hd-wallpaper", "current?v=7")
+        );
         assert_eq!(p["wallpaper"]["active"], true);
     }
 
@@ -1683,6 +1689,7 @@ mod tests {
         assert!(resolve_theme(&state, "asset-fake-webp").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn asset_external_symlink_rejected() {
         let state = test_state();
@@ -1693,6 +1700,7 @@ mod tests {
         assert!(resolve_theme(&state, "asset-extlink").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn asset_symlink_root_escape_rejected() {
         let state = test_state();
@@ -1705,6 +1713,7 @@ mod tests {
         assert!(resolve_theme(&state, "asset-rootlink").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn asset_other_theme_access_rejected() {
         let state = test_state();

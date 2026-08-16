@@ -1,0 +1,78 @@
+name: Windows x64 Beta Release
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "v0.2/windows-release"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-x64:
+    name: Build Windows x64 (NSIS installer)
+    runs-on: windows-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node (build orchestration only)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.3"
+          cache: npm
+
+      - name: Setup Rust (stable, MSVC)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Frontend typecheck
+        run: npm run typecheck
+
+      - name: Materialize Windows runtime (bundled node.exe + pinned dsh)
+        run: npm run materialize:runtime -- --target windows-x64
+
+      - name: Smoke test Windows runtime
+        run: npm run smoke:windows-runtime
+
+      - name: Engine tests
+        run: npm run test:engine
+
+      - name: Session guard tests
+        run: npm run test:guard
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Rust clippy
+        run: cargo clippy -- -D warnings
+        working-directory: src-tauri
+
+      - name: Rust tests
+        run: cargo test
+        working-directory: src-tauri
+
+      - name: Build Windows installer (NSIS)
+        run: npm run build -- --bundles nsis
+
+      - name: Upload installer + runtime metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeek-Harness-Desktop-Windows-x64-0.2.0
+          path: |
+            src-tauri/target/release/bundle/nsis/*-setup.exe
+            runtime/manifest.json
+            runtime/NOTICE.md
+            runtime/THIRD_PARTY_LICENSES.json
+          if-no-files-found: error
