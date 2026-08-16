@@ -1,0 +1,7 @@
+{
+  "name": "harness-desktop-runtime",
+  "private": true,
+  "dependencies": {
+    "@deepseek-ai/dsh": "0.1.0-rc.6"
+  }
+}

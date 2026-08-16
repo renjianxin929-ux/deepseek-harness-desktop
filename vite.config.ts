@@ -20,6 +20,7 @@ export default defineConfig({
       input: {
         index: resolve(__dirname, "index.html"),
         appearance: resolve(__dirname, "appearance.html"),
+        usage: resolve(__dirname, "usage.html"),
       },
     },
   },

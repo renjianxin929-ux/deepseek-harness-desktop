@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Usage — DeepSeek Harness Desktop</title>
+    <link rel="stylesheet" href="/src/usage.css" />
+  </head>
+  <body>
+    <main id="usage-root">
+      <header class="hd-header">
+        <h1>Usage</h1>
+        <p class="hd-subtitle">Measured usage &amp; estimated cost (read-only).</p>
+      </header>
+
+      <section class="hd-section" aria-labelledby="hd-current-title">
+        <h2 id="hd-current-title">Current Session</h2>
+        <div id="hd-current" class="hd-card">
+          <p class="hd-empty">Loading…</p>
+        </div>
+      </section>
+
+      <section class="hd-section" aria-labelledby="hd-today-title">
+        <h2 id="hd-today-title">Today</h2>
+        <div id="hd-today" class="hd-card">
+          <p class="hd-empty">Loading…</p>
+        </div>
+      </section>
+
+      <section class="hd-section" aria-labelledby="hd-semantics-title">
+        <h2 id="hd-semantics-title">Semantics</h2>
+        <div id="hd-semantics" class="hd-card">
+          <p class="hd-note"></p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/usage.ts"></script>
+  </body>
+</html>

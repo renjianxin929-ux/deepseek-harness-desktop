@@ -1,0 +1,115 @@
+/* DeepSeek Harness Desktop — Usage window (minimal, read-only). */
+:root {
+  color-scheme: light dark;
+  font-family: -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 14px;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: rgba(20, 20, 24, 0.02);
+}
+
+.hd-header h1 {
+  font-size: 20px;
+  margin: 0 0 4px;
+}
+
+.hd-subtitle {
+  margin: 0 0 18px;
+  opacity: 0.6;
+}
+
+.hd-section {
+  margin-bottom: 18px;
+}
+
+.hd-section h2 {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.55;
+  margin: 0 0 8px;
+}
+
+.hd-card {
+  border: 1px solid rgba(128, 128, 140, 0.25);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.5);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hd-card {
+    background: rgba(40, 40, 46, 0.5);
+  }
+}
+
+.hd-empty {
+  margin: 0;
+  opacity: 0.5;
+}
+
+.hd-session-id {
+  margin: 0 0 10px;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 12px;
+  word-break: break-all;
+  opacity: 0.7;
+}
+
+.hd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 16px;
+}
+
+.hd-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.hd-label {
+  opacity: 0.6;
+}
+
+.hd-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hd-cost {
+  font-weight: 600;
+  color: rgb(25, 120, 90);
+}
+
+@media (prefers-color-scheme: dark) {
+  .hd-cost {
+    color: rgb(90, 200, 150);
+  }
+}
+
+.hd-details {
+  margin-top: 10px;
+  border-top: 1px solid rgba(128, 128, 140, 0.2);
+  padding-top: 8px;
+}
+
+.hd-details summary {
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.hd-details-body {
+  margin-top: 8px;
+}
+
+.hd-note {
+  margin: 0;
+  opacity: 0.6;
+  font-size: 12px;
+  line-height: 1.5;
+}

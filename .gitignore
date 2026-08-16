@@ -5,6 +5,10 @@ src-tauri/gen/
 .DS_Store
 *.log
 
+# Materialized bundled runtime (recreated by `npm run materialize:runtime`).
+# Committed inputs: scripts/runtime-package.json + scripts/runtime-package-lock.json.
+runtime/
+
 # Local dev/test artifacts (never committed)
 .hd-config/
 .vision/

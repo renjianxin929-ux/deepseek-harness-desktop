@@ -1,6 +1,6 @@
 [package]
 name = "deepseek-harness-desktop"
-version = "0.1.0"
+version = "0.2.0"
 description = "DeepSeek Harness Desktop — macOS launcher for DeepSeek Harness 0.1.0-rc.6"
 authors = ["renjianxin"]
 edition = "2021"
@@ -22,3 +22,5 @@ signal-hook = "0.3"
 cssparser = "0.36"
 selectors = "0.36"
 precomputed-hash = "0.1"
+zstd = "0.13"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
