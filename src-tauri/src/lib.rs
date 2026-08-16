@@ -1020,6 +1020,20 @@ fn start_flow(app: &AppHandle) {
         }
     });
 
+    // Re-apply the CURRENT appearance once the Harness page loads. The
+    // initialization script's `__HD_INITIAL__` payload is a setup-time snapshot,
+    // so any settings changed while the main window was still on the loading
+    // page would otherwise be lost on navigation. A one-shot re-apply makes the
+    // persisted + in-memory config authoritative after every navigate.
+    {
+        let reapply = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            let state = reapply.state::<AppearanceState>();
+            appearance::apply_to_main_window(&reapply, &state);
+        });
+    }
+
     // Enter READY and start the bounded health monitor.
     {
         *state.reliability.lock().unwrap() = reliability::ReliabilityState::Ready;
@@ -1197,6 +1211,77 @@ fn spawn_start_flow(app: &AppHandle) {
     std::thread::spawn(move || {
         let _g = FlowGuard;
         start_flow(&app);
+    });
+}
+
+/// Bounded control-path self-test (test hook only). Waits for the Harness to be
+/// ready, then drives the real appearance commands and records each boundary to
+/// the startup log. It never asserts visual quality — only that a control change
+/// reaches the main-window engine (observable via the `[appearance]` apply log
+/// and the engine's `hd-beacon` state line).
+fn spawn_appearance_self_test(app: AppHandle) {
+    std::thread::spawn(move || {
+        // 1. Wait for the Harness to be ready + the main window to navigate.
+        let mut ready = false;
+        for _ in 0..120 {
+            let phase = app.state::<AppState>().status.lock().unwrap().phase.clone();
+            if phase == "ready" {
+                ready = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if !ready {
+            log_line("[appearance-self-test] harness never became ready");
+            return;
+        }
+        // 2. Let the main window finish navigating and the engine boot.
+        std::thread::sleep(std::time::Duration::from_secs(8));
+        log_line("[appearance-self-test] driving real commands");
+
+        // 3. THEME.
+        match appearance::set_theme(app.clone(), app.state::<AppearanceState>(), "deep-glass".into()) {
+            Ok(s) => log_line(&format!(
+                "[appearance-self-test] set_theme ok -> activeTheme={}",
+                s.active_theme
+            )),
+            Err(e) => log_line(&format!("[appearance-self-test] set_theme FAILED: {e}")),
+        }
+
+        // 4. GLASS DEPTH 0 -> 50 -> 100 (real computed-style deltas captured by
+        //    the engine's dom-probe beacon).
+        match appearance::set_glass_depth(app.clone(), app.state::<AppearanceState>(), 50) {
+            Ok(s) => log_line(&format!(
+                "[appearance-self-test] set_glass_depth(50) ok -> glassDepth={}",
+                s.glass_depth
+            )),
+            Err(e) => log_line(&format!("[appearance-self-test] set_glass_depth(50) FAILED: {e}")),
+        }
+        match appearance::set_glass_depth(app.clone(), app.state::<AppearanceState>(), 100) {
+            Ok(s) => log_line(&format!(
+                "[appearance-self-test] set_glass_depth ok -> glassDepth={}",
+                s.glass_depth
+            )),
+            Err(e) => log_line(&format!("[appearance-self-test] set_glass_depth FAILED: {e}")),
+        }
+
+        // 5. IMAGE wallpaper via the real bytes→store→apply path.
+        let mut png = vec![0u8; 32];
+        png[..8].copy_from_slice(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
+        let fixture = std::env::temp_dir().join("hd-selftest-wallpaper.png");
+        if fs::write(&fixture, &png).is_ok() {
+            let st = app.state::<AppearanceState>();
+            match appearance::install_wallpaper_from_path(&app, &st, &fixture) {
+                Ok(()) => log_line("[appearance-self-test] install image ok"),
+                Err(e) => log_line(&format!("[appearance-self-test] install image FAILED: {e}")),
+            }
+        } else {
+            log_line("[appearance-self-test] could not write image fixture");
+        }
+
+        // 6. Give the beacon time to fire, then report the observed engine state.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        log_line("[appearance-self-test] done");
     });
 }
 
@@ -1396,6 +1481,14 @@ pub fn run() {
                 });
             }
             spawn_start_flow(app.handle());
+
+            // Deterministic control-path self-test (HD_APPEARANCE_SELF_TEST=1):
+            // exercises the REAL commands + main-window apply path end-to-end and
+            // records each boundary to the startup log. Never runs in production.
+            if env::var("HD_APPEARANCE_SELF_TEST").is_ok() {
+                spawn_appearance_self_test(app.handle().clone());
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1405,6 +1498,7 @@ pub fn run() {
             appearance::get_appearance,
             appearance::set_theme,
             appearance::set_motion,
+            appearance::set_glass_depth,
             appearance::set_language,
             appearance::set_wallpaper,
             appearance::set_wallpaper_bytes,

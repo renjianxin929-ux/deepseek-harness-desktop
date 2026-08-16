@@ -1,0 +1,52 @@
+{
+  "id": "deep-glass",
+  "name": "Deep Glass",
+  "description": "Clear scene + local glass UI. The wallpaper/video stays optically clear in open areas; the sidebar, composer, cards and dialogs are the glass surfaces. Still recognizably Harness.",
+  "tokens": {
+    "light": {
+      "--dsw-alias-bg-base": "rgba(250, 251, 253, 0.45)",
+      "--dsw-alias-bg-layer-1": "rgba(252, 253, 254, 0.62)",
+      "--dsw-alias-bg-layer-2": "rgba(254, 254, 255, 0.74)",
+      "--dsw-alias-bg-layer-3": "rgba(255, 255, 255, 0.92)",
+      "--dsw-alias-bg-module-platform": "rgba(250, 251, 253, 0.66)",
+      "--dsw-specific-sidebar-fill": "rgba(246, 247, 250, 0.50)",
+      "--dsw-specific-input-major": "rgba(244, 246, 249, 0.72)",
+      "--dsw-alias-label-secondary": "rgb(72, 76, 83)",
+      "--dsw-alias-label-tertiary": "rgb(106, 110, 117)"
+    },
+    "dark": {
+      "--dsw-alias-bg-base": "rgba(20, 20, 24, 0.40)",
+      "--dsw-alias-bg-layer-1": "rgba(28, 28, 33, 0.56)",
+      "--dsw-alias-bg-layer-2": "rgba(34, 34, 39, 0.68)",
+      "--dsw-alias-bg-layer-3": "rgba(44, 44, 49, 0.88)",
+      "--dsw-alias-bg-module-platform": "rgba(28, 28, 33, 0.60)",
+      "--dsw-specific-sidebar-fill": "rgba(15, 15, 18, 0.45)",
+      "--dsw-specific-input-major": "rgba(36, 36, 40, 0.72)",
+      "--dsw-alias-label-secondary": "rgb(222, 226, 232)",
+      "--dsw-alias-label-tertiary": "rgb(188, 193, 200)"
+    }
+  },
+  "surfaces": {
+    "light": {
+      "--dsw-alias-bg-base": "rgba(250, 251, 253, 0.35)",
+      "--dsw-alias-bg-layer-1": "rgba(252, 253, 254, 0.55)",
+      "--dsw-alias-bg-layer-2": "rgba(254, 254, 255, 0.68)",
+      "--dsw-alias-bg-layer-3": "rgba(255, 255, 255, 0.88)",
+      "--dsw-alias-bg-module-platform": "rgba(250, 251, 253, 0.60)",
+      "--dsw-specific-sidebar-fill": "rgba(246, 247, 250, 0.40)",
+      "--dsw-specific-input-major": "rgba(244, 246, 249, 0.72)"
+    },
+    "dark": {
+      "--dsw-alias-bg-base": "rgba(18, 18, 22, 0.30)",
+      "--dsw-alias-bg-layer-1": "rgba(26, 26, 30, 0.50)",
+      "--dsw-alias-bg-layer-2": "rgba(32, 32, 36, 0.62)",
+      "--dsw-alias-bg-layer-3": "rgba(40, 40, 44, 0.85)",
+      "--dsw-alias-bg-module-platform": "rgba(26, 26, 30, 0.55)",
+      "--dsw-specific-sidebar-fill": "rgba(14, 14, 17, 0.35)",
+      "--dsw-specific-input-major": "rgba(36, 36, 40, 0.72)"
+    }
+  },
+  "components": "#root [contenteditable=\"true\"], #root textarea { border-radius: 14px; } #root [contenteditable=\"true\"]:focus, #root textarea:focus { background: var(--dsw-alias-bg-layer-3, rgba(255,255,255,0.9)); } #root pre, #root pre code { background: var(--dsw-alias-bg-layer-3, rgba(40,40,44,0.85)); } #root :focus-visible { outline-color: var(--dsw-alias-brand-primary, rgb(77,124,254)); } #root ::selection { background: var(--dsw-alias-state-business-tertiary, rgba(77,124,254,0.22)); }",
+  "motion": "@keyframes hd-deep-glass-pan { from { background-position: 0% 0%; } to { background-position: 100% 100%; } } #root > * { background-size: 180% 180%; animation: hd-deep-glass-pan 28s ease-in-out infinite alternate; } @media (prefers-reduced-motion: reduce) { #root > * { animation: none; } }",
+  "asset": "linear-gradient(155deg, rgba(70,76,92,0.26) 0%, rgba(38,42,54,0.30) 30%, rgba(28,31,42,0.36) 55%, rgba(52,57,72,0.22) 80%, rgba(18,20,28,0.40) 100%)"
+}
