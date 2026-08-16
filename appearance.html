@@ -35,7 +35,7 @@
         <div class="hd-section-head">
           <h2 id="hd-wallpaper-title" data-i18n="wallpaper">Wallpaper</h2>
           <button id="hd-wallpaper-pick" class="hd-btn hd-btn-primary" type="button" data-i18n="chooseImage">Choose image…</button>
-          <input id="hd-wallpaper-file" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+          <input id="hd-wallpaper-file" type="file" accept="image/png,image/jpeg,image/webp,video/mp4" hidden />
         </div>
         <p class="hd-hint" data-i18n="wallpaperHint">Stored locally on this Mac. Never uploaded.</p>
         <div id="hd-wallpaper-empty" class="hd-empty hidden" data-i18n="noWallpaper">No wallpaper selected.</div>
@@ -85,6 +85,17 @@
           </div>
           <button id="hd-wallpaper-remove" class="hd-btn hd-btn-danger" type="button" data-i18n="removeWallpaper">Remove wallpaper</button>
         </div>
+      </section>
+
+      <section class="hd-section" aria-labelledby="hd-glass-title">
+        <div class="hd-section-head">
+          <h2 id="hd-glass-title" data-i18n="glass">Glass</h2>
+        </div>
+        <div class="hd-field hd-range">
+          <label for="hd-glass-depth"><span data-i18n="glassDepth">Surface transparency</span> <span id="hd-glass-depth-val"></span></label>
+          <input id="hd-glass-depth" type="range" min="0" max="100" step="1" />
+        </div>
+        <p class="hd-hint" data-i18n="glassDepthHint">0 keeps each theme’s surfaces; 100 is the deepest supported glass.</p>
       </section>
 
       <section class="hd-section" aria-labelledby="hd-motion-title">

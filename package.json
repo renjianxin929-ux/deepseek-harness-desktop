@@ -1,6 +1,6 @@
 {
   "name": "deepseek-harness-desktop",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "DeepSeek Harness Desktop V0.1 — native macOS desktop shell for DeepSeek Harness 0.1.0-rc.6, with a safe DIY appearance system",
   "private": true,
   "type": "module",
@@ -12,8 +12,12 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "test:engine": "node tests/engine.test.mjs",
+    "test:engine-apply": "node tests/engine_apply.test.mjs",
+    "test:harness-compat": "node tests/harness_compat.test.mjs",
     "test:guard": "node tests/session_guard.test.mjs",
-    "test": "npm run typecheck && npm run test:engine && npm run test:guard"
+    "test": "npm run typecheck && npm run test:engine && npm run test:engine-apply && npm run test:harness-compat && npm run test:guard",
+    "materialize:runtime": "node scripts/materialize-runtime.mjs",
+    "smoke:windows-runtime": "node scripts/smoke-windows-runtime.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2"

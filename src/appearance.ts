@@ -15,6 +15,7 @@ interface ThemeMeta {
 interface WallpaperSettings {
   active: boolean;
   fileName: string | null;
+  mediaType: string;
   fit: string;
   position: string;
   opacity: number;
@@ -27,6 +28,7 @@ interface WallpaperSettings {
 interface AppearanceSnapshot {
   activeTheme: string;
   motionEnabled: boolean;
+  glassDepth: number;
   wallpaper: WallpaperSettings;
   themes: ThemeMeta[];
   compatMode: string;
@@ -43,8 +45,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     langSystem: "System",
     theme: "Theme",
     wallpaper: "Wallpaper",
-    chooseImage: "Choose image…",
-    wallpaperHint: "Stored locally on this Mac. Never uploaded.",
+    chooseImage: "Choose image or video…",
+    wallpaperHint: "Image or MP4 video. Stored locally. Never uploaded.",
     noWallpaper: "No wallpaper selected.",
     fit: "Fit",
     fitCover: "Cover",
@@ -69,6 +71,9 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     blur: "Blur",
     overlay: "Readability overlay",
     removeWallpaper: "Remove wallpaper",
+    glass: "Glass",
+    glassDepth: "Surface transparency",
+    glassDepthHint: "0 keeps each theme’s surfaces; 100 is the deepest supported glass.",
     motion: "Motion",
     motionHint:
       "Lightweight, decorative motion. Respects the system “Reduce Motion” setting.",
@@ -82,11 +87,13 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     wallpaperApplied: "Wallpaper applied",
     wallpaperRemoved: "Wallpaper removed",
     resetDone: "Reset to Official",
-    readingImage: "Reading image…",
+    readingImage: "Reading file…",
     errorPrefix: "Error:",
+    applyFailed: "Failed to apply",
     errorLoading: "Error loading appearance:",
-    unsupportedType: "Unsupported file type. Choose a PNG, JPG/JPEG, or WebP image.",
+    unsupportedType: "Unsupported file type. Choose a PNG, JPG/JPEG, WebP image, or MP4 video.",
     imageTooLarge: "Image too large (max 24 MB).",
+    videoTooLarge: "Video too large (max 96 MB).",
     off: "off",
   },
   "zh-CN": {
@@ -96,8 +103,8 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     langSystem: "跟随系统",
     theme: "主题",
     wallpaper: "壁纸",
-    chooseImage: "选择图片…",
-    wallpaperHint: "仅保存在本机，绝不上传。",
+    chooseImage: "选择图片或视频…",
+    wallpaperHint: "图片或 MP4 视频，仅保存在本机，绝不上传。",
     noWallpaper: "未选择壁纸。",
     fit: "适配方式",
     fitCover: "覆盖",
@@ -122,6 +129,9 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     blur: "模糊",
     overlay: "可读性遮罩",
     removeWallpaper: "移除壁纸",
+    glass: "玻璃",
+    glassDepth: "表面透明度",
+    glassDepthHint: "0 保持主题默认表面；100 为最深玻璃效果。",
     motion: "动效",
     motionHint: "轻量装饰动效，遵循系统“减少动态效果”设置。",
     resetToOfficial: "恢复官方样式",
@@ -134,16 +144,19 @@ const STRINGS: Record<Lang, Record<string, string>> = {
     wallpaperApplied: "壁纸已应用",
     wallpaperRemoved: "壁纸已移除",
     resetDone: "已恢复官方样式",
-    readingImage: "正在读取图片…",
+    readingImage: "正在读取文件…",
     errorPrefix: "错误：",
+    applyFailed: "应用失败",
     errorLoading: "加载外观设置出错：",
-    unsupportedType: "不支持的文件类型，请选择 PNG、JPG/JPEG 或 WebP 图片。",
+    unsupportedType: "不支持的文件类型，请选择 PNG、JPG/JPEG、WebP 图片或 MP4 视频。",
     imageTooLarge: "图片过大（最大 24 MB）。",
+    videoTooLarge: "视频过大（最大 96 MB）。",
     off: "关",
   },
 };
 
 const MAX_WALLPAPER_BYTES = 24 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 96 * 1024 * 1024;
 
 let current: AppearanceSnapshot | null = null;
 let busy = false;
@@ -200,7 +213,15 @@ function render(): void {
   if (!current) return;
   renderThemes();
   renderWallpaper();
+  renderGlassDepth();
   ($("hd-motion") as HTMLInputElement).checked = current.motionEnabled;
+}
+
+function renderGlassDepth(): void {
+  const input = $("hd-glass-depth") as HTMLInputElement;
+  const depth = current!.glassDepth ?? 0;
+  input.value = String(depth);
+  $("hd-glass-depth-val").textContent = `${depth}%`;
 }
 
 function themeDescription(theme: ThemeMeta): string {
@@ -261,18 +282,19 @@ async function selectTheme(id: string): Promise<void> {
   await run(async () => {
     await invoke("set_theme", { themeId: id });
     setStatus(t("themeApplied"));
-  });
+  }, "theme");
 }
 
-async function run(fn: () => Promise<void>): Promise<void> {
+async function run(fn: () => Promise<void>, op: string): Promise<void> {
   if (busy) return;
   busy = true;
   try {
     await fn();
     await refresh();
   } catch (e) {
-    setStatus(`${t("errorPrefix")} ${String(e)}`);
-    console.error(e);
+    const msg = `${t("errorPrefix")} ${t("applyFailed")} ${op}: ${String(e)}`;
+    setStatus(msg);
+    console.error(`[appearance] ${op} failed:`, e);
   } finally {
     busy = false;
   }
@@ -300,14 +322,14 @@ function pushWallpaperSettings(): void {
   };
   void run(async () => {
     await invoke("set_wallpaper", { settings });
-  });
+  }, "wallpaper settings");
 }
 
 function bindControls(): void {
   $("hd-language").addEventListener("change", (e) => {
     void run(async () => {
       await invoke("set_language", { language: (e.target as HTMLSelectElement).value });
-    });
+    }, "language");
   });
 
   $("hd-wallpaper-pick").addEventListener("click", () => {
@@ -318,13 +340,19 @@ function bindControls(): void {
     const file = input.files && input.files[0];
     input.value = "";
     if (!file) return;
+    const isVideo = /\.mp4$/i.test(file.name);
+    const isImage = /\.(png|jpe?g|webp)$/i.test(file.name);
     // Localized pre-check before sending bytes to Rust (Rust remains the
     // authoritative validator).
-    if (!/\.(png|jpe?g|webp)$/i.test(file.name)) {
+    if (!isVideo && !isImage) {
       setStatus(t("unsupportedType"));
       return;
     }
-    if (file.size > MAX_WALLPAPER_BYTES) {
+    if (isVideo && file.size > MAX_VIDEO_BYTES) {
+      setStatus(t("videoTooLarge"));
+      return;
+    }
+    if (isImage && file.size > MAX_WALLPAPER_BYTES) {
       setStatus(t("imageTooLarge"));
       return;
     }
@@ -333,14 +361,14 @@ function bindControls(): void {
       const data = await readFileAsDataUrl(file);
       await invoke("set_wallpaper_bytes", { payload: { name: file.name, data } });
       setStatus(t("wallpaperApplied"));
-    });
+    }, "wallpaper file");
   });
 
   $("hd-wallpaper-remove").addEventListener("click", () => {
     void run(async () => {
       await invoke("remove_wallpaper");
       setStatus(t("wallpaperRemoved"));
-    });
+    }, "remove wallpaper");
   });
 
   for (const id of ["hd-fit", "hd-position", "hd-overlay-mode"] as const) {
@@ -365,14 +393,24 @@ function bindControls(): void {
   $("hd-motion").addEventListener("change", (e) => {
     void run(async () => {
       await invoke("set_motion", { enabled: (e.target as HTMLInputElement).checked });
-    });
+    }, "motion");
+  });
+
+  $("hd-glass-depth").addEventListener("input", () => {
+    const v = ($("hd-glass-depth") as HTMLInputElement).value;
+    $("hd-glass-depth-val").textContent = `${v}%`;
+  });
+  $("hd-glass-depth").addEventListener("change", (e) => {
+    void run(async () => {
+      await invoke("set_glass_depth", { depth: Number((e.target as HTMLInputElement).value) });
+    }, "glass depth");
   });
 
   $("hd-reset").addEventListener("click", () => {
     void run(async () => {
       await invoke("reset_appearance");
       setStatus(t("resetDone"));
-    });
+    }, "reset");
   });
 }
 

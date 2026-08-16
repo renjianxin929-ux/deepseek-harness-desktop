@@ -18,8 +18,8 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -29,7 +29,11 @@ use tauri::{AppHandle, Emitter, Manager, RunEvent, State, Url};
 
 mod appearance;
 mod css_scope;
+mod platform;
+mod reliability;
+mod runtime;
 mod session_guard;
+mod usage;
 use appearance::AppearanceState;
 
 const REQUIRED_VERSION: &str = "0.1.0-rc.6";
@@ -38,9 +42,18 @@ const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const PORT_LINE_TIMEOUT: Duration = Duration::from_secs(15);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(5);
 const LOG_TAIL_CAP: usize = 200;
+/// How often the reliability monitor polls loopback health after READY.
+const HEALTH_POLL_INTERVAL: Duration = Duration::from_secs(5);
+/// Consecutive failures before entering `RECOVERING`.
+const RECOVER_AFTER: u32 = 3;
+/// Consecutive failures before entering `FAILED` (≈ 60 s at 5 s interval).
+const FAIL_AFTER: u32 = 12;
 
 static STARTING: AtomicBool = AtomicBool::new(false);
 static SHUTTING_DOWN: AtomicBool = AtomicBool::new(false);
+/// Monotonic start-flow generation; a health monitor exits when a newer flow
+/// takes over (bounded, no stale monitors, no restart loop).
+static START_GEN: AtomicU64 = AtomicU64::new(0);
 
 // ---------------------------------------------------------------------------
 // Status model (serialized to the loading page)
@@ -113,28 +126,6 @@ pub struct Resolved {
 struct BinCandidate {
     name: String,
     path: PathBuf,
-}
-
-fn home_dir() -> PathBuf {
-    if let Ok(h) = env::var("HOME") {
-        if !h.is_empty() {
-            return PathBuf::from(h);
-        }
-    }
-    if let Ok(out) = Command::new("/usr/bin/id").arg("-un").output() {
-        let user = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if !user.is_empty() {
-            if let Ok(text) = fs::read_to_string("/etc/passwd") {
-                for line in text.lines() {
-                    let parts: Vec<&str> = line.split(':').collect();
-                    if parts.len() >= 6 && parts[0] == user {
-                        return PathBuf::from(parts[5]);
-                    }
-                }
-            }
-        }
-    }
-    PathBuf::from("/")
 }
 
 fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<(i32, String, String), String> {
@@ -283,7 +274,7 @@ fn pool_from_env(shell_bins: Vec<BinCandidate>) -> Vec<BinCandidate> {
             PathBuf::from("/opt/homebrew/bin"),
         ],
     );
-    let home = home_dir();
+    let home = platform::home_dir();
     let mut vm_dirs: Vec<PathBuf> = Vec::new();
     for base in [
         home.join(".nvm/versions/node"),
@@ -318,7 +309,7 @@ fn read_dsh_version(dir: &Path) -> Option<String> {
 }
 
 fn npx_cache_dsh_dirs() -> Vec<PathBuf> {
-    let npx_root = home_dir().join(".npm/_npx");
+    let npx_root = platform::home_dir().join(".npm/_npx");
     let Ok(entries) = fs::read_dir(&npx_root) else {
         return Vec::new();
     };
@@ -367,7 +358,7 @@ fn probe_npx_version(node: &Path, npx: &Path) -> Result<String, String> {
         .arg("-y")
         .arg(format!("{DSH_PACKAGE}@{REQUIRED_VERSION}"))
         .arg("--version");
-    cmd.env("HOME", home_dir());
+    cmd.env("HOME", platform::home_dir());
     let (_, out, err) = run_with_timeout(&mut cmd, Duration::from_secs(90))?;
     let v = out.trim().to_string();
     if v.is_empty() {
@@ -380,20 +371,22 @@ fn probe_npx_version(node: &Path, npx: &Path) -> Result<String, String> {
 }
 
 fn probe_version(rt: &Runtime) -> Result<String, String> {
-    let mut cmd = Command::new(&rt.node);
+    // Node and the entry path may carry a Windows verbatim prefix (`\\?\E:\...`)
+    // from the bundled-runtime resolver. Normalize at the process boundary only.
+    let mut cmd = Command::new(platform::process_path(&rt.node));
     match &rt.invocation {
         Invocation::Direct { bin_js } => {
-            cmd.arg(bin_js).arg("--version");
+            cmd.arg(platform::process_path(bin_js)).arg("--version");
         }
         Invocation::Npx { npx } => {
-            cmd.arg(npx)
+            cmd.arg(platform::process_path(npx))
                 .arg("-y")
                 .arg(format!("{DSH_PACKAGE}@{REQUIRED_VERSION}"))
                 .arg("--version");
         }
     }
-    cmd.env("HOME", home_dir());
-    cmd.env("DSH_HOME", home_dir().join(".dsh"));
+    cmd.env("HOME", platform::home_dir());
+    cmd.env("DSH_HOME", platform::home_dir().join(".dsh"));
     let (_, out, err) = run_with_timeout(&mut cmd, Duration::from_secs(90))
         .map_err(|e| format!("version probe: {e}"))?;
     let v = out.trim().to_string();
@@ -406,16 +399,12 @@ fn probe_version(rt: &Runtime) -> Result<String, String> {
     Ok(v)
 }
 
-/// Resolve the runtime. Priority:
+/// Resolve the runtime. Production priority:
 ///   1. test hooks (HD_FORCE_NODE / HD_FORCE_DSH_BIN)
-///   2. `dsh` on PATH / login shell (must be @deepseek-ai/dsh, must be rc.6)
-///   3. ~/.npm/_npx/*/node_modules/@deepseek-ai/dsh with version == rc.6
-///   4. global npm root @deepseek-ai/dsh with version == rc.6
-///   5. npx fallback pinned to @deepseek-ai/dsh@0.1.0-rc.6 (never a silent upgrade)
-pub fn resolve_runtime() -> Result<Resolved, String> {
-    let (shell_path, shell_bins) = shell_probe();
-    let pool = pool_from_env(shell_bins);
-
+///   2. bundled runtime (pinned Node + pinned Harness) — the ONLY production path
+///   3. legacy system runtime (V0.1) — dev-only, requires HD_SYSTEM_RUNTIME=1
+pub fn resolve_runtime(resource_dir: Option<&Path>) -> Result<Resolved, String> {
+    // 1) test hooks (no shell probe needed for HD_FORCE_NODE)
     if let Ok(node_s) = env::var("HD_FORCE_NODE") {
         let node = PathBuf::from(&node_s);
         if !node.is_file() {
@@ -430,7 +419,7 @@ pub fn resolve_runtime() -> Result<Resolved, String> {
                 invocation: Invocation::Direct { bin_js: dsh_bin },
                 source: "HD_FORCE_NODE test hook".into(),
             },
-            shell_path,
+            shell_path: String::new(),
         });
     }
     if let Ok(bin_s) = env::var("HD_FORCE_DSH_BIN") {
@@ -440,6 +429,8 @@ pub fn resolve_runtime() -> Result<Resolved, String> {
                 "HD_FORCE_DSH_BIN points to a non-existent dsh entry: {bin_s}"
             ));
         }
+        let (shell_path, shell_bins) = shell_probe();
+        let pool = pool_from_env(shell_bins);
         let node = pick_node(&pool)?;
         return Ok(Resolved {
             runtime: Runtime {
@@ -450,6 +441,54 @@ pub fn resolve_runtime() -> Result<Resolved, String> {
             shell_path,
         });
     }
+
+    // 2) bundled runtime — the production path. Missing/corrupt fails closed
+    //    unless the developer explicitly opts into the legacy system runtime.
+    match runtime::locate_runtime_root(resource_dir) {
+        Some(root) => match runtime::resolve(&root) {
+            Ok(br) => {
+                return Ok(Resolved {
+                    runtime: Runtime {
+                        node: br.node,
+                        invocation: Invocation::Direct { bin_js: br.bin_js },
+                        source: br.source,
+                    },
+                    shell_path: String::new(),
+                });
+            }
+            Err(e) => {
+                if e.is_integrity() {
+                    // An integrity failure is a security signal: NEVER fall back
+                    // to the system runtime, even with HD_SYSTEM_RUNTIME=1.
+                    return Err(format!(
+                        "Bundled runtime integrity verification failed: {}. Refusing to start (the system runtime is not a fallback after an integrity failure).",
+                        e.message()
+                    ));
+                }
+                if env::var("HD_SYSTEM_RUNTIME").is_err() {
+                    return Err(format!(
+                        "Bundled runtime invalid: {e}. Refusing to start: production never silently falls back to system Node/Harness (set HD_SYSTEM_RUNTIME=1 only for development)."
+                    ));
+                }
+                log_line(&format!(
+                    "[runtime] bundled runtime invalid ({e}); falling back to system runtime (HD_SYSTEM_RUNTIME=1)"
+                ));
+            }
+        },
+        None => {
+            if env::var("HD_SYSTEM_RUNTIME").is_err() {
+                return Err(
+                    "Bundled runtime not found. Production requires the bundled Node + Harness runtime and never silently falls back to system tooling (set HD_SYSTEM_RUNTIME=1 only for development)."
+                        .into(),
+                );
+            }
+            log_line("[runtime] bundled runtime not found; falling back to system runtime (HD_SYSTEM_RUNTIME=1)");
+        }
+    }
+
+    // 3) legacy system runtime (V0.1, dev-only) — requires HD_SYSTEM_RUNTIME=1.
+    let (shell_path, shell_bins) = shell_probe();
+    let pool = pool_from_env(shell_bins);
 
     // 1) dsh on PATH / login shell
     for cand in pool.iter().filter(|c| c.name == "dsh") {
@@ -622,13 +661,13 @@ fn tail_of(tail: &Arc<Mutex<VecDeque<String>>>) -> String {
 fn process_exited(state: &State<'_, AppState>) -> bool {
     let mut mgr = state.process.lock().unwrap();
     match mgr.as_mut() {
-        Some(hp) => matches!(hp.child.try_wait(), Ok(Some(_))),
+        Some(hp) => matches!(hp.proc.try_wait(), Ok(Some(_))),
         None => true,
     }
 }
 
 fn log_line(line: &str) {
-    let p = home_dir().join("Library/Logs/HarnessDesktop/startup.log");
+    let p = platform::log_dir().join("startup.log");
     if let Some(parent) = p.parent() {
         let _ = fs::create_dir_all(parent);
     }
@@ -641,38 +680,27 @@ fn log_line(line: &str) {
     }
 }
 
-fn kill_group_graceful(mut hp: HarnessProcess) {
-    let pid = hp.child.id() as i32;
-    if pid <= 1 {
-        return;
-    }
-    unsafe {
-        libc::kill(-pid, libc::SIGTERM);
-    }
-    let deadline = Instant::now() + SHUTDOWN_GRACE;
-    while Instant::now() < deadline {
-        if let Ok(Some(_)) = hp.child.try_wait() {
-            let _ = hp.child.wait();
-            log_line(&format!(
-                "[shutdown] harness process group {pid} exited gracefully"
-            ));
-            return;
+fn kill_owned_tree(mut tree: platform::OwnedProcessTree) {
+    let pid = tree.id();
+    match tree.graceful_terminate(SHUTDOWN_GRACE) {
+        platform::TerminateOutcome::Exited => {
+            log_line(&format!("[shutdown] harness process tree {pid} exited gracefully"))
         }
-        std::thread::sleep(Duration::from_millis(100));
+        platform::TerminateOutcome::ForceKilled => {
+            log_line(&format!("[shutdown] harness process tree {pid} force-killed"))
+        }
+        platform::TerminateOutcome::NotOwned => {
+            log_line(&format!(
+                "[shutdown] harness process tree {pid} not owned; left untouched"
+            ))
+        }
     }
-    unsafe {
-        libc::kill(-pid, libc::SIGKILL);
-    }
-    let _ = hp.child.wait();
-    log_line(&format!(
-        "[shutdown] harness process group {pid} force-killed"
-    ));
 }
 
 fn shutdown_process(state: &State<'_, AppState>) {
     let mut mgr = state.process.lock().unwrap();
     if let Some(hp) = mgr.take() {
-        kill_group_graceful(hp);
+        kill_owned_tree(hp.proc);
     }
 }
 
@@ -718,10 +746,21 @@ fn start_flow(app: &AppHandle) {
     let state = app.state::<AppState>();
     // Make sure any previous instance we manage is gone before starting again.
     shutdown_process(&state);
+    // New generation: any stale health monitor from a previous flow exits.
+    let gen = START_GEN.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
+    {
+        *state.reliability.lock().unwrap() = reliability::ReliabilityState::Starting;
+    }
+    log_line(&format!("[reliability] {}", reliability::ReliabilityState::Starting.name()));
 
     set_status(app, StatusPayload::phase("runtime", "Resolving runtime..."));
 
-    let resolved = match resolve_runtime() {
+    let resource_dir = app
+        .path()
+        .resource_dir()
+        .ok()
+        .or_else(|| env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())));
+    let resolved = match resolve_runtime(resource_dir.as_deref()) {
         Ok(r) => r,
         Err(reason) => {
             set_status(
@@ -784,13 +823,18 @@ fn start_flow(app: &AppHandle) {
     );
 
     // Build: node <dsh entry> web --host 127.0.0.1 --port 0   (port 0 => OS picks a free port)
-    let mut cmd = Command::new(&resolved.runtime.node);
+    // Normalize every process-boundary path: the bundled node executable, the
+    // entry script, and the runtime-derived PATH dir may all carry a Windows
+    // verbatim prefix (`\\?\E:\...`); Node's module resolver rejects the
+    // verbatim entry path (EISDIR on the drive root). Filesystem resolution
+    // above kept the raw path — only the values handed to `Command` change.
+    let mut cmd = Command::new(platform::process_path(&resolved.runtime.node));
     match &resolved.runtime.invocation {
         Invocation::Direct { bin_js } => {
-            cmd.arg(bin_js);
+            cmd.arg(platform::process_path(bin_js));
         }
         Invocation::Npx { npx } => {
-            cmd.arg(npx)
+            cmd.arg(platform::process_path(npx))
                 .arg("-y")
                 .arg(format!("{DSH_PACKAGE}@{REQUIRED_VERSION}"));
         }
@@ -801,15 +845,16 @@ fn start_flow(app: &AppHandle) {
         .arg("--port")
         .arg("0");
 
-    let home = home_dir();
+    let home = platform::home_dir();
     cmd.current_dir(&home);
+    let sep = platform::path_separator();
     let mut path = String::new();
     if let Some(dir) = resolved.runtime.node.parent() {
-        path.push_str(&format!("{}:", dir.display()));
+        path.push_str(&format!("{}{}", platform::process_path(dir).display(), sep));
     }
     if !resolved.shell_path.is_empty() {
         path.push_str(&resolved.shell_path);
-        path.push(':');
+        path.push_str(sep);
     }
     if let Ok(p) = env::var("PATH") {
         path.push_str(&p);
@@ -820,11 +865,8 @@ fn start_flow(app: &AppHandle) {
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
     cmd.stdin(Stdio::null());
-    #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0); // own process group so we only ever kill our own tree
-    }
+    // Own process group/tree so we only ever signal the tree we spawned.
+    platform::OwnedProcessTree::configure_spawn(&mut cmd);
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -882,11 +924,12 @@ fn start_flow(app: &AppHandle) {
     }
     drop(port_tx);
 
-    // The app owns this process from now on.
+    // The app owns this process tree from now on.
+    let proc = platform::OwnedProcessTree::wrap(child);
     {
         let mut mgr = state.process.lock().unwrap();
         *mgr = Some(HarnessProcess {
-            child,
+            proc,
             port: 0,
             runtime_path: runtime_path.clone(),
             version: version.clone(),
@@ -909,7 +952,10 @@ fn start_flow(app: &AppHandle) {
             let reason = if exited {
                 "The Harness process exited before becoming ready.".into()
             } else {
-                "Timed out waiting for the Harness port announcement.".into()
+                format!(
+                    "{} Timed out waiting for the Harness port announcement.",
+                    reliability::FailureReason::ReadinessFailed.message()
+                )
             };
             set_status(
                 app,
@@ -946,7 +992,10 @@ fn start_flow(app: &AppHandle) {
         let reason = if exited {
             "The Harness process exited before the readiness check passed.".into()
         } else {
-            format!("Harness did not answer on http://127.0.0.1:{port} within 30 seconds.")
+            format!(
+                "{} Harness did not answer on http://127.0.0.1:{port} within 30 seconds.",
+                reliability::FailureReason::ReadinessFailed.message()
+            )
         };
         set_status(
             app,
@@ -977,6 +1026,117 @@ fn start_flow(app: &AppHandle) {
             }
         }
     });
+
+    // Re-apply the CURRENT appearance once the Harness page loads. The
+    // initialization script's `__HD_INITIAL__` payload is a setup-time snapshot,
+    // so any settings changed while the main window was still on the loading
+    // page would otherwise be lost on navigation. A one-shot re-apply makes the
+    // persisted + in-memory config authoritative after every navigate.
+    {
+        let reapply = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_secs(4));
+            let state = reapply.state::<AppearanceState>();
+            appearance::apply_to_main_window(&reapply, &state);
+        });
+    }
+
+    // Enter READY and start the bounded health monitor.
+    {
+        *state.reliability.lock().unwrap() = reliability::ReliabilityState::Ready;
+    }
+    log_line(&format!(
+        "[reliability] {} (port {port})",
+        reliability::ReliabilityState::Ready.name()
+    ));
+    spawn_health_monitor(app.clone(), port, gen);
+}
+
+/// Bounded, conservative health monitor. It polls loopback health and the owned
+/// child's liveness, and only ever transitions the reliability state. It never
+/// restarts the harness (no duplicate task execution) and never signals anything
+/// it does not own. A stale monitor exits when a newer start-flow generation
+/// takes over, so there is no monitor pile-up and no restart loop.
+fn spawn_health_monitor(app: AppHandle, port: u16, gen: u64) {
+    std::thread::spawn(move || {
+        let mut failures: u32 = 0;
+        loop {
+            std::thread::sleep(HEALTH_POLL_INTERVAL);
+            if START_GEN.load(Ordering::SeqCst) != gen {
+                return; // superseded by a newer flow
+            }
+            if SHUTTING_DOWN.load(Ordering::SeqCst) {
+                return; // clean shutdown in progress — never report a spurious FAILED
+            }
+            let state = app.state::<AppState>();
+            let child_alive = !process_exited(&state);
+            let health_ok = child_alive && http_ok(port);
+            if health_ok {
+                failures = 0;
+            } else {
+                failures = failures.saturating_add(1);
+            }
+            let current = *state.reliability.lock().unwrap();
+            let next = reliability::next_state(
+                current,
+                child_alive,
+                health_ok,
+                failures,
+                RECOVER_AFTER,
+                FAIL_AFTER,
+            );
+            if next != current {
+                *state.reliability.lock().unwrap() = next;
+                log_line(&format!(
+                    "[reliability] {} -> {} (failures={failures})",
+                    current.name(),
+                    next.name()
+                ));
+                if next == reliability::ReliabilityState::Failed {
+                    let reason = reliability::failure_reason(child_alive, failures, FAIL_AFTER)
+                        .unwrap_or(reliability::FailureReason::ProcessExited);
+                    reconcile_failed(&app, port, reason);
+                    return;
+                }
+            }
+        }
+    });
+}
+
+/// Reconcile the UI to backend truth when the owned runtime has failed: surface
+/// a reason-specific error on the loading page with the Retry action. This
+/// restores connection/UI state only — it never resubmits, cancels, or
+/// duplicates work.
+fn reconcile_failed(app: &AppHandle, port: u16, reason: reliability::FailureReason) {
+    let (version, runtime_path, tail) = {
+        let state = app.state::<AppState>();
+        let mgr = state.process.lock().unwrap();
+        match mgr.as_ref() {
+            Some(hp) => (hp.version.clone(), hp.runtime_path.clone(), tail_of(&hp.log_tail)),
+            None => ("unknown".into(), "unknown".into(), String::new()),
+        }
+    };
+    set_status(
+        app,
+        error_payload(
+            format!(
+                "{} The Desktop host recovered to a safe state and did not restart or resubmit any task.",
+                reason.message()
+            ),
+            version,
+            runtime_path,
+            Some(port),
+            tail,
+        ),
+    );
+    let app2 = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = app2.get_webview_window("main") {
+            if let Ok(u) = Url::parse(&format!("{}/", platform::app_origin_url())) {
+                let _ = w.navigate(u);
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -984,7 +1144,7 @@ fn start_flow(app: &AppHandle) {
 // ---------------------------------------------------------------------------
 
 pub struct HarnessProcess {
-    pub child: Child,
+    pub proc: platform::OwnedProcessTree,
     pub port: u16,
     pub runtime_path: String,
     pub version: String,
@@ -994,11 +1154,46 @@ pub struct HarnessProcess {
 pub struct AppState {
     pub status: Mutex<StatusPayload>,
     pub process: Mutex<Option<HarnessProcess>>,
+    pub reliability: Mutex<reliability::ReliabilityState>,
+    /// Reliably-reported current session id (from the injected read-only
+    /// beacon). `None` = not yet known; the Usage surface never guesses it.
+    pub current_session: Mutex<Option<String>>,
 }
 
 #[tauri::command]
 fn get_status(state: State<'_, AppState>) -> StatusPayload {
     state.status.lock().unwrap().clone()
+}
+
+#[tauri::command]
+fn get_usage(state: State<'_, AppState>) -> usage::UsageReport {
+    let home = platform::home_dir();
+    let dsh = usage::dsh_home(&home);
+    let current = state.current_session.lock().unwrap().clone();
+    usage::compute_usage(&dsh, current.as_deref())
+}
+
+/// Open (or focus) the read-only Usage window.
+fn open_usage_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Some(w) = app.get_webview_window("usage") {
+        let _ = w.show();
+        let _ = w.unminimize();
+        let _ = w.set_focus();
+        return;
+    }
+    let builder = tauri::WebviewWindowBuilder::new(
+        app,
+        "usage",
+        tauri::WebviewUrl::App("usage.html".into()),
+    )
+    .title("Usage")
+    .inner_size(560.0, 640.0)
+    .min_inner_size(460.0, 480.0)
+    .resizable(true)
+    .center();
+    if let Err(e) = builder.build() {
+        eprintln!("[usage] failed to open usage window: {e}");
+    }
 }
 
 #[tauri::command]
@@ -1023,6 +1218,77 @@ fn spawn_start_flow(app: &AppHandle) {
     std::thread::spawn(move || {
         let _g = FlowGuard;
         start_flow(&app);
+    });
+}
+
+/// Bounded control-path self-test (test hook only). Waits for the Harness to be
+/// ready, then drives the real appearance commands and records each boundary to
+/// the startup log. It never asserts visual quality — only that a control change
+/// reaches the main-window engine (observable via the `[appearance]` apply log
+/// and the engine's `hd-beacon` state line).
+fn spawn_appearance_self_test(app: AppHandle) {
+    std::thread::spawn(move || {
+        // 1. Wait for the Harness to be ready + the main window to navigate.
+        let mut ready = false;
+        for _ in 0..120 {
+            let phase = app.state::<AppState>().status.lock().unwrap().phase.clone();
+            if phase == "ready" {
+                ready = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+        if !ready {
+            log_line("[appearance-self-test] harness never became ready");
+            return;
+        }
+        // 2. Let the main window finish navigating and the engine boot.
+        std::thread::sleep(std::time::Duration::from_secs(8));
+        log_line("[appearance-self-test] driving real commands");
+
+        // 3. THEME.
+        match appearance::set_theme(app.clone(), app.state::<AppearanceState>(), "deep-glass".into()) {
+            Ok(s) => log_line(&format!(
+                "[appearance-self-test] set_theme ok -> activeTheme={}",
+                s.active_theme
+            )),
+            Err(e) => log_line(&format!("[appearance-self-test] set_theme FAILED: {e}")),
+        }
+
+        // 4. GLASS DEPTH 0 -> 50 -> 100 (real computed-style deltas captured by
+        //    the engine's dom-probe beacon).
+        match appearance::set_glass_depth(app.clone(), app.state::<AppearanceState>(), 50) {
+            Ok(s) => log_line(&format!(
+                "[appearance-self-test] set_glass_depth(50) ok -> glassDepth={}",
+                s.glass_depth
+            )),
+            Err(e) => log_line(&format!("[appearance-self-test] set_glass_depth(50) FAILED: {e}")),
+        }
+        match appearance::set_glass_depth(app.clone(), app.state::<AppearanceState>(), 100) {
+            Ok(s) => log_line(&format!(
+                "[appearance-self-test] set_glass_depth ok -> glassDepth={}",
+                s.glass_depth
+            )),
+            Err(e) => log_line(&format!("[appearance-self-test] set_glass_depth FAILED: {e}")),
+        }
+
+        // 5. IMAGE wallpaper via the real bytes→store→apply path.
+        let mut png = vec![0u8; 32];
+        png[..8].copy_from_slice(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a]);
+        let fixture = std::env::temp_dir().join("hd-selftest-wallpaper.png");
+        if fs::write(&fixture, &png).is_ok() {
+            let st = app.state::<AppearanceState>();
+            match appearance::install_wallpaper_from_path(&app, &st, &fixture) {
+                Ok(()) => log_line("[appearance-self-test] install image ok"),
+                Err(e) => log_line(&format!("[appearance-self-test] install image FAILED: {e}")),
+            }
+        } else {
+            log_line("[appearance-self-test] could not write image fixture");
+        }
+
+        // 6. Give the beacon time to fire, then report the observed engine state.
+        std::thread::sleep(std::time::Duration::from_secs(3));
+        log_line("[appearance-self-test] done");
     });
 }
 
@@ -1093,6 +1359,25 @@ pub fn run() {
                 .body(Vec::new())
                 .unwrap()
         })
+        // Read-only current-session beacon: the injected `usage_beacon.js`
+        // reports the officially-persisted current session id so the Usage
+        // surface can show the CURRENT session without guessing.
+        .register_uri_scheme_protocol("hd-usage-session", |ctx, request| {
+            let uri = request.uri().to_string();
+            if let Some(id) = uri
+                .split_once("?id=")
+                .and_then(|(_, q)| q.split('&').next())
+                .map(|s| s.to_string())
+            {
+                let state = ctx.app_handle().state::<AppState>();
+                *state.current_session.lock().unwrap() = Some(id.clone());
+                log_line("[usage] current session reported");
+            }
+            tauri::http::Response::builder()
+                .status(204)
+                .body(Vec::new())
+                .unwrap()
+        })
         .on_menu_event(|app, event| {
             if event.id().as_ref() == "appearance" {
                 appearance::open_appearance_window(app);
@@ -1102,7 +1387,12 @@ pub fn run() {
             app.manage(AppState {
                 status: Mutex::new(StatusPayload::phase("runtime", "Starting...")),
                 process: Mutex::new(None),
+                reliability: Mutex::new(reliability::ReliabilityState::Starting),
+                current_session: Mutex::new(None),
             });
+
+            // Record the resolved platform boundary for diagnostics.
+            log_line(&format!("[platform] {}", platform::describe()));
 
             // Appearance state + the injected engine script. Init is infallible
             // so an appearance problem can never stop Harness from launching.
@@ -1120,13 +1410,16 @@ pub fn run() {
                 );
             }
 
-            // Appearance engine + the stale session guard. Both are plain
-            // injected page scripts; the guard has no Tauri IPC and only ever
-            // performs a read-only session.list query plus, at most, a reload.
+            // Appearance engine + the stale session guard + the read-only
+            // current-session beacon. All are plain injected page scripts with
+            // no Tauri IPC; the guard only ever performs a read-only
+            // session.list query plus, at most, a reload; the beacon only reads
+            // the persisted selection and fires an image beacon.
             let init_script = format!(
-                "{}\n{}",
+                "{}\n{}\n{}",
                 appearance::build_init_script(&appearance_state),
-                session_guard::SCRIPT
+                session_guard::SCRIPT,
+                usage::BEACON
             );
             app.manage(appearance_state);
 
@@ -1145,7 +1438,12 @@ pub fn run() {
             .resizable(true)
             .initialization_script(init_script)
             .on_navigation(move |url| {
-                if url.scheme() == "hd-appearance" {
+                // The appearance button navigates to the app's `hd-appearance`
+                // scheme. On macOS that is `hd-appearance://…`; on Windows the
+                // same scheme is registered as `http://hd-appearance.localhost/…`.
+                let is_appearance = url.scheme() == "hd-appearance"
+                    || (url.scheme() == "http" && url.host_str() == Some("hd-appearance.localhost"));
+                if is_appearance {
                     appearance::open_appearance_window(&nav_handle);
                     return false;
                 }
@@ -1158,36 +1456,56 @@ pub fn run() {
             if env::var("HD_OPEN_APPEARANCE").is_ok() {
                 appearance::open_appearance_window(&handle);
             }
+            // Test/automation hook: open the read-only Usage window at startup.
+            if env::var("HD_OPEN_USAGE").is_ok() {
+                open_usage_window(&handle);
+            }
 
             let _ = app.set_menu(build_app_menu(app.handle())?);
 
             // Watch termination signals so the harness we started is never
-            // orphaned even when the app is killed by SIGTERM/SIGINT
-            // (logout, system shutdown, `kill`, Activity Monitor, ...).
-            let signal_handle = handle.clone();
-            std::thread::spawn(move || {
-                use signal_hook::consts::{SIGINT, SIGTERM};
-                if let Ok(mut sigs) = signal_hook::iterator::Signals::new([SIGTERM, SIGINT]) {
-                    // Handle the first termination signal: shut down the harness
-                    // we started, then exit (only one signal needs handling).
-                    if sigs.forever().next().is_some() {
-                        if !SHUTTING_DOWN.swap(true, Ordering::SeqCst) {
-                            let state = signal_handle.state::<AppState>();
-                            shutdown_process(&state);
+            // orphaned when the app is killed by SIGTERM/SIGINT (logout, system
+            // shutdown, `kill`, Activity Monitor, ...). POSIX signals do not
+            // exist on Windows; there the app relies on RunEvent::Exit /
+            // ExitRequested (handled below), so this watch is Unix-only.
+            #[cfg(unix)]
+            {
+                let signal_handle = handle.clone();
+                std::thread::spawn(move || {
+                    use signal_hook::consts::{SIGINT, SIGTERM};
+                    if let Ok(mut sigs) = signal_hook::iterator::Signals::new([SIGTERM, SIGINT]) {
+                        // Handle the first termination signal: shut down the
+                        // harness we started, then exit (only one signal needs
+                        // handling).
+                        if sigs.forever().next().is_some() {
+                            if !SHUTTING_DOWN.swap(true, Ordering::SeqCst) {
+                                let state = signal_handle.state::<AppState>();
+                                shutdown_process(&state);
+                            }
+                            std::process::exit(0);
                         }
-                        std::process::exit(0);
                     }
-                }
-            });
+                });
+            }
             spawn_start_flow(app.handle());
+
+            // Deterministic control-path self-test (HD_APPEARANCE_SELF_TEST=1):
+            // exercises the REAL commands + main-window apply path end-to-end and
+            // records each boundary to the startup log. Never runs in production.
+            if env::var("HD_APPEARANCE_SELF_TEST").is_ok() {
+                spawn_appearance_self_test(app.handle().clone());
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_status,
+            get_usage,
             restart,
             appearance::get_appearance,
             appearance::set_theme,
             appearance::set_motion,
+            appearance::set_glass_depth,
             appearance::set_language,
             appearance::set_wallpaper,
             appearance::set_wallpaper_bytes,
@@ -1221,6 +1539,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
     use std::os::unix::fs::symlink;
     use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -1245,6 +1564,10 @@ mod tests {
     /// (`npx -> npx-cli.js`, `npm -> npm-cli.js`). Canonicalizing the path must
     /// not be allowed to change the logical command identity, so `find_bin`
     /// still finds `npx`/`npm` by name while `node -> node` keeps passing.
+    ///
+    /// Unix-only: it exercises POSIX symlink semantics of the (dev-only) system
+    /// runtime resolver, which does not exist on Windows.
+    #[cfg(unix)]
     #[test]
     fn symlinked_npm_npx_keep_logical_identity_after_canonicalization() {
         let dir = temp_dir("symlinks");

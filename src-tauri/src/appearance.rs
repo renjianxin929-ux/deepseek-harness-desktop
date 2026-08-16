@@ -33,6 +33,7 @@ const ENGINE: &str = include_str!("engine.js");
 /// Built-in themes shipped with the app.
 const OCEAN_THEME: &str = include_str!("../../themes/ocean/theme.json");
 const STARTER_THEME: &str = include_str!("../../themes/starter/theme.json");
+const DEEP_GLASS_THEME: &str = include_str!("../../themes/deep-glass/theme.json");
 
 pub const OFFICIAL_THEME_ID: &str = "official";
 pub const CONFIG_FILE: &str = "appearance.json";
@@ -41,10 +42,15 @@ pub const THEMES_DIR: &str = "themes";
 
 /// Max size (bytes) for a decorative asset file inlined from a custom theme.
 const MAX_ASSET_BYTES: u64 = 512 * 1024;
-/// Max accepted wallpaper size (bytes) — keeps local copies bounded.
+/// Max accepted wallpaper image size (bytes) — keeps local copies bounded.
 const MAX_WALLPAPER_BYTES: u64 = 24 * 1024 * 1024;
+/// Max accepted wallpaper video size (bytes). Local MP4 only; the bound keeps
+/// the base64 copy-and-store pipeline (and memory) reasonable.
+const MAX_VIDEO_BYTES: u64 = 96 * 1024 * 1024;
 
 const ALLOWED_WALLPAPER_EXT: &[&str] = &["png", "jpg", "jpeg", "webp"];
+/// The only dynamic wallpaper format V0.2 accepts (local, browser-playable).
+const ALLOWED_VIDEO_EXT: &[&str] = &["mp4"];
 /// Local decorative asset types allowed inside a theme's `assets/` directory.
 const ALLOWED_ASSET_EXT: &[&str] = &["svg", "png", "jpg", "jpeg", "webp"];
 /// Image MIME types allowed for `data:` URIs in the `asset` field.
@@ -99,6 +105,9 @@ pub struct WallpaperSettings {
     pub active: bool,
     #[serde(default)]
     pub file_name: Option<String>,
+    /// "image" | "video" — distinguishes a static image from a local MP4.
+    #[serde(default = "default_media_type")]
+    pub media_type: String,
     #[serde(default = "default_fit")]
     pub fit: String,
     #[serde(default = "default_position")]
@@ -121,6 +130,7 @@ impl Default for WallpaperSettings {
         Self {
             active: false,
             file_name: None,
+            media_type: default_media_type(),
             fit: default_fit(),
             position: default_position(),
             opacity: default_opacity(),
@@ -134,6 +144,9 @@ impl Default for WallpaperSettings {
 
 fn default_true() -> bool {
     true
+}
+fn default_media_type() -> String {
+    "image".into()
 }
 fn default_fit() -> String {
     "cover".into()
@@ -158,6 +171,11 @@ pub struct AppearanceConfig {
     pub theme: String,
     pub motion_enabled: bool,
     pub wallpaper: WallpaperSettings,
+    /// Glass depth / surface transparency (0 = theme baseline, 100 = deepest).
+    /// The engine maps this one product-level value to the surface alpha
+    /// ranges; individual layers are never exposed as separate sliders.
+    #[serde(default = "default_glass_depth")]
+    pub glass_depth: u32,
     /// Appearance UI language: "system" | "zh-CN" | "en".
     #[serde(default = "default_language")]
     pub language: String,
@@ -170,9 +188,17 @@ impl Default for AppearanceConfig {
             theme: OFFICIAL_THEME_ID.into(),
             motion_enabled: true,
             wallpaper: WallpaperSettings::default(),
+            glass_depth: default_glass_depth(),
             language: default_language(),
         }
     }
+}
+
+fn default_glass_depth() -> u32 {
+    // 0 = the theme's authored/existing surfaces (no change). This keeps every
+    // existing config (and Official/Ocean/Starter) visually identical unless the
+    // user explicitly raises the depth.
+    0
 }
 
 fn default_language() -> String {
@@ -194,6 +220,7 @@ pub struct ThemeMeta {
 pub struct AppearanceSnapshot {
     pub active_theme: String,
     pub motion_enabled: bool,
+    pub glass_depth: u32,
     pub wallpaper: WallpaperSettings,
     pub themes: Vec<ThemeMeta>,
     pub compat_mode: String,
@@ -298,9 +325,13 @@ fn sanitize(cfg: &mut AppearanceConfig) {
     if !valid_overlay_modes.contains(&cfg.wallpaper.overlay_mode.as_str()) {
         cfg.wallpaper.overlay_mode = default_overlay_mode();
     }
+    if !["image", "video"].contains(&cfg.wallpaper.media_type.as_str()) {
+        cfg.wallpaper.media_type = default_media_type();
+    }
     cfg.wallpaper.opacity = cfg.wallpaper.opacity.clamp(0.0, 1.0);
     cfg.wallpaper.blur = cfg.wallpaper.blur.clamp(0.0, 80.0);
     cfg.wallpaper.overlay = cfg.wallpaper.overlay.clamp(0.0, 1.0);
+    cfg.glass_depth = cfg.glass_depth.min(100);
     if !is_safe_theme_id(&cfg.theme) {
         // Reject ids that could escape the themes directory.
         cfg.theme = OFFICIAL_THEME_ID.into();
@@ -377,6 +408,11 @@ pub fn resolve_theme(state: &AppearanceState, id: &str) -> Result<Theme, String>
     }
     if id == "starter" {
         let theme = parse_theme(id, STARTER_THEME)?;
+        validate_theme_security(&theme)?;
+        return Ok(theme);
+    }
+    if id == "deep-glass" {
+        let theme = parse_theme(id, DEEP_GLASS_THEME)?;
         validate_theme_security(&theme)?;
         return Ok(theme);
     }
@@ -806,6 +842,12 @@ pub fn list_themes(state: &AppearanceState) -> Vec<ThemeMeta> {
             description: "A documented template for your own theme.".into(),
             kind: "builtin".into(),
         },
+        ThemeMeta {
+            id: "deep-glass".into(),
+            name: "Deep Glass".into(),
+            description: "Deep translucent glass HUD over a maximally visible background.".into(),
+            kind: "builtin".into(),
+        },
     ];
     if let Ok(entries) = fs::read_dir(&state.themes_dir) {
         for entry in entries.flatten() {
@@ -814,7 +856,7 @@ pub fn list_themes(state: &AppearanceState) -> Vec<ThemeMeta> {
                 continue;
             }
             let id = entry.file_name().to_string_lossy().to_string();
-            if id == OFFICIAL_THEME_ID || id == "ocean" || id == "starter" {
+            if id == OFFICIAL_THEME_ID || id == "ocean" || id == "starter" || id == "deep-glass" {
                 continue;
             }
             if !dir.join("theme.json").is_file() {
@@ -912,6 +954,7 @@ fn mime_for_path(path: &Path) -> &'static str {
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("webp") => "image/webp",
         Some("svg") => "image/svg+xml",
+        Some("mp4") => "video/mp4",
         _ => "application/octet-stream",
     }
 }
@@ -952,6 +995,41 @@ fn validate_wallpaper(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a local MP4 wallpaper (extension + size + `ftyp` magic). No
+/// transcoding, no codec probing beyond the container magic; playback failure
+/// is handled by the engine's fallback.
+fn validate_video(path: &Path) -> Result<(), String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .ok_or_else(|| "file has no extension".to_string())?;
+    if !ALLOWED_VIDEO_EXT.contains(&ext.as_str()) {
+        return Err(format!("unsupported video type '.{ext}' — only MP4 (H.264) is supported"));
+    }
+    let meta = fs::metadata(path).map_err(|e| format!("cannot read file: {e}"))?;
+    if !meta.is_file() {
+        return Err("not a regular file".into());
+    }
+    if meta.len() == 0 {
+        return Err("file is empty".into());
+    }
+    if meta.len() > MAX_VIDEO_BYTES {
+        return Err(format!(
+            "video too large (max {} MB)",
+            MAX_VIDEO_BYTES / 1024 / 1024
+        ));
+    }
+    let mut head = [0u8; 16];
+    let bytes = fs::read(path).map_err(|e| format!("read video: {e}"))?;
+    let n = bytes.len().min(16);
+    head[..n].copy_from_slice(&bytes[..n]);
+    if !looks_like_mp4(&head) {
+        return Err("file is not a valid MP4".into());
+    }
+    Ok(())
+}
+
 fn looks_like_image(head: &[u8; 16], ext: &str) -> bool {
     match ext {
         "png" => head.starts_with(&[0x89, b'P', b'N', b'G']),
@@ -961,20 +1039,34 @@ fn looks_like_image(head: &[u8; 16], ext: &str) -> bool {
     }
 }
 
+/// Light magic check for a local MP4: the first top-level box must be `ftyp`
+/// (ISO BMFF), which is present in common H.264/AAC MP4s.
+fn looks_like_mp4(head: &[u8; 16]) -> bool {
+    head.len() >= 12 && &head[4..8] == b"ftyp"
+}
+
+fn media_type_for_ext(ext: &str) -> &'static str {
+    if ALLOWED_VIDEO_EXT.contains(&ext) {
+        "video"
+    } else {
+        "image"
+    }
+}
+
 /// Derive the stored file name from a user-provided file name (extension
-/// determines the stored image type; falls back to `.png`).
+/// determines the stored type; falls back to `.png`).
 fn stored_name_for(user_name: &str) -> String {
     let ext = Path::new(user_name)
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
-        .filter(|e| ALLOWED_WALLPAPER_EXT.contains(&e.as_str()))
+        .filter(|e| ALLOWED_WALLPAPER_EXT.contains(&e.as_str()) || ALLOWED_VIDEO_EXT.contains(&e.as_str()))
         .unwrap_or_else(|| "png".to_string());
     format!("wallpaper.{ext}")
 }
 
-/// Store validated image bytes into the local wallpaper directory (never the
-/// repository) and apply.
+/// Store validated wallpaper bytes (image or local MP4) into the local
+/// wallpaper directory (never the repository) and apply.
 pub fn store_wallpaper_bytes<R: Runtime>(
     app: &AppHandle<R>,
     state: &AppearanceState,
@@ -982,29 +1074,49 @@ pub fn store_wallpaper_bytes<R: Runtime>(
     bytes: &[u8],
 ) -> Result<(), String> {
     if bytes.is_empty() {
-        return Err("image is empty".into());
-    }
-    if bytes.len() as u64 > MAX_WALLPAPER_BYTES {
-        return Err(format!(
-            "image too large (max {} MB)",
-            MAX_WALLPAPER_BYTES / 1024 / 1024
-        ));
+        return Err("file is empty".into());
     }
     let ext = Path::new(user_name)
         .extension()
         .and_then(|e| e.to_str())
         .map(|e| e.to_ascii_lowercase())
         .ok_or_else(|| "file has no extension".to_string())?;
-    if !ALLOWED_WALLPAPER_EXT.contains(&ext.as_str()) {
-        return Err(format!(
-            "unsupported image type '.{ext}' — supported: PNG, JPG/JPEG, WebP"
-        ));
-    }
-    let mut head = [0u8; 16];
-    let n = bytes.len().min(16);
-    head[..n].copy_from_slice(&bytes[..n]);
-    if !looks_like_image(&head, &ext) {
-        return Err("file content does not match its image type".into());
+    let media_type = media_type_for_ext(&ext);
+
+    if media_type == "video" {
+        if !ALLOWED_VIDEO_EXT.contains(&ext.as_str()) {
+            return Err(format!("unsupported video type '.{ext}' — only MP4 (H.264) is supported"));
+        }
+        if bytes.len() as u64 > MAX_VIDEO_BYTES {
+            return Err(format!(
+                "video too large (max {} MB)",
+                MAX_VIDEO_BYTES / 1024 / 1024
+            ));
+        }
+        let mut head = [0u8; 16];
+        let n = bytes.len().min(16);
+        head[..n].copy_from_slice(&bytes[..n]);
+        if !looks_like_mp4(&head) {
+            return Err("file is not a valid MP4".into());
+        }
+    } else {
+        if !ALLOWED_WALLPAPER_EXT.contains(&ext.as_str()) {
+            return Err(format!(
+                "unsupported image type '.{ext}' — supported: PNG, JPG/JPEG, WebP"
+            ));
+        }
+        if bytes.len() as u64 > MAX_WALLPAPER_BYTES {
+            return Err(format!(
+                "image too large (max {} MB)",
+                MAX_WALLPAPER_BYTES / 1024 / 1024
+            ));
+        }
+        let mut head = [0u8; 16];
+        let n = bytes.len().min(16);
+        head[..n].copy_from_slice(&bytes[..n]);
+        if !looks_like_image(&head, &ext) {
+            return Err("file content does not match its image type".into());
+        }
     }
 
     let name = stored_name_for(user_name);
@@ -1018,6 +1130,7 @@ pub fn store_wallpaper_bytes<R: Runtime>(
             .map_err(|_| "appearance lock poisoned")?;
         cfg.wallpaper.active = true;
         cfg.wallpaper.file_name = Some(name);
+        cfg.wallpaper.media_type = media_type.to_string();
         cfg.wallpaper.version = cfg.wallpaper.version.wrapping_add(1);
     }
     save_config(state)?;
@@ -1025,15 +1138,24 @@ pub fn store_wallpaper_bytes<R: Runtime>(
     Ok(())
 }
 
-/// Copy a user-selected image file into the local wallpaper directory. Used by
-/// tests and by the `HD_FORCE_WALLPAPER` startup hook; the interactive path
-/// goes through `set_wallpaper_bytes`.
+/// Copy a user-selected image/video file into the local wallpaper directory.
+/// Used by tests and by the `HD_FORCE_WALLPAPER` startup hook; the interactive
+/// path goes through `set_wallpaper_bytes`.
 pub fn install_wallpaper_from_path<R: Runtime>(
     app: &AppHandle<R>,
     state: &AppearanceState,
     source: &Path,
 ) -> Result<(), String> {
-    validate_wallpaper(source)?;
+    let ext = source
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .ok_or_else(|| "file has no extension".to_string())?;
+    if ALLOWED_VIDEO_EXT.contains(&ext.as_str()) {
+        validate_video(source)?;
+    } else {
+        validate_wallpaper(source)?;
+    }
     let bytes = fs::read(source).map_err(|e| format!("read wallpaper: {e}"))?;
     let name = source
         .file_name()
@@ -1065,13 +1187,17 @@ pub fn engine_payload(state: &AppearanceState) -> Result<serde_json::Value, Stri
         .clone();
     let theme = resolve_theme(state, &cfg.theme)?;
     let wallpaper_url = if cfg.wallpaper.active && cfg.wallpaper.file_name.is_some() {
-        format!("hd-wallpaper://current?v={}", cfg.wallpaper.version)
+        crate::platform::custom_scheme_url(
+            "hd-wallpaper",
+            &format!("current?v={}", cfg.wallpaper.version),
+        )
     } else {
         String::new()
     };
     Ok(json!({
         "compatMode": compat_mode(),
         "motionEnabled": cfg.motion_enabled,
+        "glassDepth": cfg.glass_depth,
         "theme": {
             "id": theme.id,
             "tokens": theme.tokens,
@@ -1083,6 +1209,7 @@ pub fn engine_payload(state: &AppearanceState) -> Result<serde_json::Value, Stri
         "wallpaper": {
             "active": cfg.wallpaper.active && !wallpaper_url.is_empty(),
             "url": wallpaper_url,
+            "mediaType": cfg.wallpaper.media_type,
             "fit": cfg.wallpaper.fit,
             "position": cfg.wallpaper.position,
             "opacity": cfg.wallpaper.opacity,
@@ -1106,18 +1233,54 @@ pub fn build_init_script(state: &AppearanceState) -> String {
     script
 }
 
+/// Append a diagnostic line to the Desktop startup log (best-effort; an
+/// appearance problem must never block the app). Used to make the main-window
+/// apply path observable instead of silently swallowing failures.
+fn app_log(line: &str) {
+    use std::io::Write;
+    let p = crate::platform::log_dir().join("startup.log");
+    if let Some(parent) = p.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(p) {
+        let _ = writeln!(f, "[appearance] {line}");
+    }
+}
+
 /// Apply the current appearance live (without reload) to the main window.
 pub fn apply_to_main_window<R: Runtime>(app: &AppHandle<R>, state: &AppearanceState) {
     let payload = match engine_payload(state) {
         Ok(p) => p,
-        Err(_) => return,
+        Err(e) => {
+            app_log(&format!("apply aborted: engine payload error: {e}"));
+            return;
+        }
     };
     let js = format!(
-        "try{{ if (window.__HD_APPLY__) window.__HD_APPLY__({}); }}catch(e){{}}",
+        "try{{ if (window.__HD_APPLY__) window.__HD_APPLY__({}); }}catch(e){{ if (window.__HD_STATE__) {{ try{{ window.__HD_STATE__.error = String(e && e.message || e); }}catch(_){{}} }} }}",
         payload
     );
-    if let Some(w) = app.get_webview_window("main") {
-        let _ = w.eval(&js);
+    match app.get_webview_window("main") {
+        Some(w) => match w.eval(&js) {
+            Ok(()) => {
+                let depth = payload.get("glassDepth").and_then(|v| v.as_u64()).unwrap_or(0);
+                let theme = payload
+                    .get("theme")
+                    .and_then(|t| t.get("id"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let wp = payload
+                    .get("wallpaper")
+                    .and_then(|v| v.get("active"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                app_log(&format!(
+                    "apply sent to main window (theme={theme}, glassDepth={depth}, wallpaper={wp})"
+                ));
+            }
+            Err(e) => app_log(&format!("apply eval failed: {e}")),
+        },
+        None => app_log("apply aborted: no 'main' webview window found"),
     }
 }
 
@@ -1128,7 +1291,7 @@ pub fn apply_to_main_window<R: Runtime>(app: &AppHandle<R>, state: &AppearanceSt
 pub fn serve_wallpaper(
     state: &AppearanceState,
     _webview_label: &str,
-    _request: &tauri::http::Request<Vec<u8>>,
+    request: &tauri::http::Request<Vec<u8>>,
 ) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::{header::CONTENT_TYPE, Response, StatusCode};
     let not_found = |code: StatusCode, msg: &str| {
@@ -1142,18 +1305,58 @@ pub fn serve_wallpaper(
         Some(p) if p.is_file() => p,
         _ => return not_found(StatusCode::NOT_FOUND, "no wallpaper"),
     };
-    match fs::read(&path) {
-        Ok(bytes) => {
-            let mime = mime_for_path(&path);
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(CONTENT_TYPE, mime)
-                .header("Cache-Control", "private, max-age=0")
-                .body(bytes)
-                .unwrap()
+    let bytes = match fs::read(&path) {
+        Ok(b) => b,
+        Err(_) => return not_found(StatusCode::NOT_FOUND, "wallpaper unreadable"),
+    };
+    let mime = mime_for_path(&path);
+
+    // Local MP4 playback: honor a single byte Range request (206) so WebViews
+    // can seek/stream. Images are always served whole.
+    if mime == "video/mp4" {
+        if let Some(range) = request.headers().get(tauri::http::header::RANGE) {
+            if let Ok(range) = range.to_str() {
+                if let Some((start, end)) = parse_byte_range(range, bytes.len() as u64) {
+                    let body = bytes[start as usize..=end as usize].to_vec();
+                    return Response::builder()
+                        .status(StatusCode::PARTIAL_CONTENT)
+                        .header(CONTENT_TYPE, mime)
+                        .header("Accept-Ranges", "bytes")
+                        .header("Content-Range", format!("bytes {start}-{end}/{}", bytes.len()))
+                        .header("Cache-Control", "private, max-age=0")
+                        .body(body)
+                        .unwrap();
+                }
+            }
         }
-        Err(_) => not_found(StatusCode::NOT_FOUND, "wallpaper unreadable"),
     }
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, mime)
+        .header("Cache-Control", "private, max-age=0")
+        .body(bytes)
+        .unwrap()
+}
+
+/// Parse a single `bytes=START-END` range (END optional) against a total size.
+/// Returns `None` for anything malformed/out-of-bounds (served whole instead).
+fn parse_byte_range(header: &str, total: u64) -> Option<(u64, u64)> {
+    if total == 0 {
+        return None;
+    }
+    let spec = header.strip_prefix("bytes=")?;
+    let (start_s, end_s) = spec.split_once('-')?;
+    let start: u64 = start_s.trim().parse().ok()?;
+    let end: u64 = if end_s.trim().is_empty() {
+        total - 1
+    } else {
+        end_s.trim().parse().ok()?
+    };
+    if start > end || start >= total {
+        return None;
+    }
+    Some((start, end.min(total - 1)))
 }
 
 // ---------------------------------------------------------------------------
@@ -1172,6 +1375,7 @@ fn snapshot<R: Runtime>(
     Ok(AppearanceSnapshot {
         active_theme: cfg.theme.clone(),
         motion_enabled: cfg.motion_enabled,
+        glass_depth: cfg.glass_depth,
         wallpaper: cfg.wallpaper.clone(),
         themes: list_themes(state),
         compat_mode: compat_mode(),
@@ -1226,6 +1430,25 @@ pub fn set_motion<R: Runtime>(
 }
 
 #[tauri::command]
+pub fn set_glass_depth<R: Runtime>(
+    app: AppHandle<R>,
+    state: tauri::State<'_, AppearanceState>,
+    depth: u32,
+) -> Result<AppearanceSnapshot, String> {
+    {
+        let mut cfg = state
+            .config
+            .lock()
+            .map_err(|_| "appearance lock poisoned")?;
+        // Clamp here so the persisted value is always within [0, 100].
+        cfg.glass_depth = depth.min(100);
+    }
+    save_config(&state)?;
+    apply_to_main_window(&app, &state);
+    snapshot(&app, &state)
+}
+
+#[tauri::command]
 pub fn set_language<R: Runtime>(
     app: AppHandle<R>,
     state: tauri::State<'_, AppearanceState>,
@@ -1254,8 +1477,9 @@ pub fn set_wallpaper<R: Runtime>(
             .lock()
             .map_err(|_| "appearance lock poisoned")?;
         let mut s = settings;
-        // Preserve the installed file + version; these are managed here.
+        // Preserve the installed file + type + version; these are managed here.
         s.file_name = cfg.wallpaper.file_name.clone();
+        s.media_type = cfg.wallpaper.media_type.clone();
         s.version = cfg.wallpaper.version;
         cfg.wallpaper = s;
         sanitize(&mut cfg);
@@ -1304,6 +1528,7 @@ pub fn remove_wallpaper<R: Runtime>(
             .map_err(|_| "appearance lock poisoned")?;
         cfg.wallpaper.active = false;
         cfg.wallpaper.file_name = None;
+        cfg.wallpaper.media_type = default_media_type();
         cfg.wallpaper.version = cfg.wallpaper.version.wrapping_add(1);
     }
     save_config(&state)?;
@@ -1338,7 +1563,14 @@ mod tests {
     use super::*;
 
     fn test_state() -> AppearanceState {
-        let dir = std::env::temp_dir().join(format!("hd-test-{}", std::process::id()));
+        // Unique per call so parallel tests never share a config dir.
+        static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("hd-test-{}-{nanos}-{seq}", std::process::id()));
         let themes_dir = dir.join(THEMES_DIR);
         let wallpaper_dir = dir.join(WALLPAPER_DIR);
         fs::create_dir_all(&themes_dir).unwrap();
@@ -1423,10 +1655,80 @@ mod tests {
         assert!(validate_wallpaper(&p).is_ok());
     }
 
+    fn mp4_bytes() -> Vec<u8> {
+        // Minimal ISO BMFF header: [size=32][ftyp][isom]…
+        let mut b = vec![0u8; 32];
+        b[0..4].copy_from_slice(&32u32.to_be_bytes());
+        b[4..8].copy_from_slice(b"ftyp");
+        b[8..12].copy_from_slice(b"isom");
+        b
+    }
+
+    #[test]
+    fn video_validation_accepts_mp4() {
+        let p = write_temp(&mp4_bytes(), "clip.mp4");
+        assert!(validate_video(&p).is_ok());
+        assert!(looks_like_mp4(&{
+            let mut h = [0u8; 16];
+            let b = mp4_bytes();
+            h.copy_from_slice(&b[..16]);
+            h
+        }));
+    }
+
+    #[test]
+    fn video_validation_rejects_non_mp4() {
+        // Wrong extension (MOV).
+        let p = write_temp(&mp4_bytes(), "clip.mov");
+        assert!(validate_video(&p).is_err());
+        // Wrong extension (WebM).
+        let p2 = write_temp(&mp4_bytes(), "clip.webm");
+        assert!(validate_video(&p2).is_err());
+        // Not an MP4 container (no ftyp).
+        let mut not_mp4 = vec![0u8; 32];
+        not_mp4[4..8].copy_from_slice(b"moov");
+        let p3 = write_temp(&not_mp4, "fake.mp4");
+        assert!(validate_video(&p3).is_err());
+        // Empty file.
+        let p4 = write_temp(&[], "empty.mp4");
+        assert!(validate_video(&p4).is_err());
+    }
+
+    #[test]
+    fn media_type_from_extension_and_sanitize() {
+        assert_eq!(media_type_for_ext("mp4"), "video");
+        assert_eq!(media_type_for_ext("png"), "image");
+        assert_eq!(media_type_for_ext("webp"), "image");
+        assert_eq!(stored_name_for("clip.MP4"), "wallpaper.mp4");
+        assert_eq!(stored_name_for("photo.PNG"), "wallpaper.png");
+
+        let mut cfg = AppearanceConfig {
+            wallpaper: WallpaperSettings {
+                media_type: "weird".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        sanitize(&mut cfg);
+        assert_eq!(cfg.wallpaper.media_type, "image");
+    }
+
+    #[test]
+    fn parse_byte_range_basic() {
+        assert_eq!(parse_byte_range("bytes=0-", 100), Some((0, 99)));
+        assert_eq!(parse_byte_range("bytes=0-15", 100), Some((0, 15)));
+        assert_eq!(parse_byte_range("bytes=10-20", 100), Some((10, 20)));
+        assert_eq!(parse_byte_range("bytes=200-300", 100), None);
+        assert_eq!(parse_byte_range("bytes=20-10", 100), None);
+        assert_eq!(parse_byte_range("garbage", 100), None);
+        assert_eq!(parse_byte_range("bytes=0-", 0), None);
+    }
+
     #[test]
     fn sanitize_clamps_and_resets() {
         let mut cfg = AppearanceConfig {
             theme: "../escape".into(),
+            glass_depth: 500,
             wallpaper: WallpaperSettings {
                 fit: "bogus".into(),
                 position: "nowhere".into(),
@@ -1440,6 +1742,7 @@ mod tests {
         };
         sanitize(&mut cfg);
         assert_eq!(cfg.theme, OFFICIAL_THEME_ID);
+        assert_eq!(cfg.glass_depth, 100);
         assert_eq!(cfg.wallpaper.fit, "cover");
         assert_eq!(cfg.wallpaper.position, "center");
         assert_eq!(cfg.wallpaper.opacity, 1.0);
@@ -1498,6 +1801,138 @@ mod tests {
     }
 
     #[test]
+    fn deep_glass_theme_resolves_as_builtin() {
+        let theme = resolve_theme(&test_state(), "deep-glass").unwrap();
+        assert_eq!(theme.id, "deep-glass");
+        assert_eq!(theme.name, "Deep Glass");
+        // Light + dark surface tokens are present for both modes.
+        assert!(!theme.tokens.light.is_empty());
+        assert!(!theme.tokens.dark.is_empty());
+        assert!(theme.surfaces.as_ref().unwrap().light.contains_key("--dsw-specific-sidebar-fill"));
+        assert!(theme.surfaces.as_ref().unwrap().dark.contains_key("--dsw-alias-bg-layer-3"));
+        // Ambient gradient (single allowed gradient function, no url).
+        assert!(theme.asset.as_ref().unwrap().starts_with("linear-gradient("));
+        // Motion uses the hd- prefix and a reduced-motion guard.
+        assert!(theme.motion.as_ref().unwrap().contains("hd-deep-glass-pan"));
+        assert!(theme.motion.as_ref().unwrap().contains("prefers-reduced-motion"));
+        // Readability treatments for composer / code.
+        assert!(theme.components.as_ref().unwrap().contains("contenteditable"));
+        assert!(theme.components.as_ref().unwrap().contains("#root pre"));
+    }
+
+    #[test]
+    fn list_themes_includes_deep_glass() {
+        let state = test_state();
+        let themes = list_themes(&state);
+        let deep = themes
+            .iter()
+            .find(|t| t.id == "deep-glass")
+            .expect("deep-glass must be listed");
+        assert_eq!(deep.kind, "builtin");
+        // Built-ins are not duplicated as custom themes.
+        assert_eq!(themes.iter().filter(|t| t.id == "deep-glass").count(), 1);
+    }
+
+    #[test]
+    fn glass_depth_defaults_to_zero_and_migrates() {
+        // Missing field in an old config file must deserialize to 0 (no change).
+        let state = test_state();
+        let path = state.config_dir.join(CONFIG_FILE);
+        fs::write(&path, r#"{"version":1,"theme":"ocean","motionEnabled":true,"wallpaper":{"active":false}}"#)
+            .unwrap();
+        let loaded = load_config(&path);
+        assert_eq!(loaded.glass_depth, 0);
+        assert_eq!(AppearanceConfig::default().glass_depth, 0);
+    }
+
+    #[test]
+    fn pre_deep_glass_config_migrates_safely() {
+        // A full fixture representing the user's pre-Deep-Glass V0.1/V0.2 config:
+        // no `glassDepth`, no `mediaType`. Both must default safely and the config
+        // must still resolve + produce a valid engine payload (never silently
+        // disabling future updates).
+        let state = test_state();
+        let path = state.config_dir.join(CONFIG_FILE);
+        let old = r#"{
+            "version": 1,
+            "theme": "ocean",
+            "motionEnabled": true,
+            "wallpaper": {
+                "active": false,
+                "fileName": null,
+                "fit": "cover",
+                "position": "center",
+                "opacity": 0.6,
+                "blur": 0.0,
+                "overlay": 0.45,
+                "overlayMode": "auto",
+                "version": 3
+            },
+            "language": "system"
+        }"#;
+        fs::write(&path, old).unwrap();
+        let loaded = load_config(&path);
+        assert_eq!(loaded.theme, "ocean");
+        assert_eq!(loaded.glass_depth, 0);
+        assert_eq!(loaded.wallpaper.media_type, "image");
+        // A migrated config must still serialize to a valid payload.
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.theme = loaded.theme;
+            cfg.glass_depth = loaded.glass_depth;
+            cfg.wallpaper = loaded.wallpaper;
+            cfg.motion_enabled = loaded.motion_enabled;
+            cfg.language = loaded.language;
+        }
+        let p = engine_payload(&state).unwrap();
+        assert_eq!(p["theme"]["id"], "ocean");
+        assert_eq!(p["glassDepth"], 0);
+        assert_eq!(p["wallpaper"]["mediaType"], "image");
+    }
+
+    #[test]
+    fn malformed_config_does_not_disable_updates() {
+        // A corrupt config file must fall back to defaults (and remain writable),
+        // not poison the in-memory state such that later updates are dropped.
+        let state = test_state();
+        let path = state.config_dir.join(CONFIG_FILE);
+        fs::write(&path, b"not-json {{{").unwrap();
+        let loaded = load_config(&path);
+        assert_eq!(loaded.theme, OFFICIAL_THEME_ID);
+        assert_eq!(loaded.glass_depth, 0);
+        // A subsequent save (as a command would do) must still succeed.
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.theme = "deep-glass".into();
+        }
+        save_config(&state).unwrap();
+        assert_eq!(load_config(&path).theme, "deep-glass");
+    }
+
+    #[test]
+    fn config_round_trip_persists_glass_depth() {
+        let state = test_state();
+        let path = state.config_dir.join(CONFIG_FILE);
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.theme = "deep-glass".into();
+            cfg.glass_depth = 80;
+        }
+        save_config(&state).unwrap();
+        let loaded = load_config(&path);
+        assert_eq!(loaded.theme, "deep-glass");
+        assert_eq!(loaded.glass_depth, 80);
+    }
+
+    #[test]
+    fn engine_payload_includes_glass_depth() {
+        let state = test_state();
+        state.config.lock().unwrap().glass_depth = 65;
+        let p = engine_payload(&state).unwrap();
+        assert_eq!(p["glassDepth"], 65);
+    }
+
+    #[test]
     fn custom_theme_asset_inlined() {
         let state = test_state();
         let dir = state.themes_dir.join("mytheme");
@@ -1536,8 +1971,24 @@ mod tests {
             cfg.wallpaper.version = 7;
         }
         let p = engine_payload(&state).unwrap();
-        assert_eq!(p["wallpaper"]["url"], "hd-wallpaper://current?v=7");
+        assert_eq!(
+            p["wallpaper"]["url"],
+            crate::platform::custom_scheme_url("hd-wallpaper", "current?v=7")
+        );
         assert_eq!(p["wallpaper"]["active"], true);
+    }
+
+    #[test]
+    fn engine_payload_includes_media_type() {
+        let state = test_state();
+        {
+            let mut cfg = state.config.lock().unwrap();
+            cfg.wallpaper.active = true;
+            cfg.wallpaper.file_name = Some("wallpaper.mp4".into());
+            cfg.wallpaper.media_type = "video".into();
+        }
+        let p = engine_payload(&state).unwrap();
+        assert_eq!(p["wallpaper"]["mediaType"], "video");
     }
 
     #[test]
@@ -1683,6 +2134,7 @@ mod tests {
         assert!(resolve_theme(&state, "asset-fake-webp").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn asset_external_symlink_rejected() {
         let state = test_state();
@@ -1693,6 +2145,7 @@ mod tests {
         assert!(resolve_theme(&state, "asset-extlink").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn asset_symlink_root_escape_rejected() {
         let state = test_state();
@@ -1705,6 +2158,7 @@ mod tests {
         assert!(resolve_theme(&state, "asset-rootlink").is_err());
     }
 
+    #[cfg(unix)]
     #[test]
     fn asset_other_theme_access_rejected() {
         let state = test_state();
