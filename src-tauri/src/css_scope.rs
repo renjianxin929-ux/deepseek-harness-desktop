@@ -869,4 +869,12 @@ mod tests {
         validate_theme_css(starter_theme.components.as_deref().unwrap(), "components").unwrap();
         validate_theme_css(starter_theme.motion.as_deref().unwrap(), "motion").unwrap();
     }
+
+    #[test]
+    fn deep_glass_components_motion_pass() {
+        let deep_glass = include_str!("../../themes/deep-glass/theme.json");
+        let theme: crate::appearance::Theme = serde_json::from_str(deep_glass).unwrap();
+        validate_theme_css(theme.components.as_deref().unwrap(), "components").unwrap();
+        validate_theme_css(theme.motion.as_deref().unwrap(), "motion").unwrap();
+    }
 }

@@ -12,8 +12,10 @@
     "dev": "tauri dev",
     "build": "tauri build",
     "test:engine": "node tests/engine.test.mjs",
+    "test:engine-apply": "node tests/engine_apply.test.mjs",
+    "test:harness-compat": "node tests/harness_compat.test.mjs",
     "test:guard": "node tests/session_guard.test.mjs",
-    "test": "npm run typecheck && npm run test:engine && npm run test:guard",
+    "test": "npm run typecheck && npm run test:engine && npm run test:engine-apply && npm run test:harness-compat && npm run test:guard",
     "materialize:runtime": "node scripts/materialize-runtime.mjs",
     "smoke:windows-runtime": "node scripts/smoke-windows-runtime.mjs"
   },
