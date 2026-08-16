@@ -4,11 +4,13 @@
 > DeepSeek Harness Desktop 是一个**非官方**社区项目，与 DeepSeek 无隶属、背书或关联关系。
 > DeepSeek Harness Desktop is an **unofficial** community project, not affiliated with, endorsed by, or an official release of DeepSeek.
 
-A native **macOS** desktop shell for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), plus a safe, user-customizable **appearance system**.
+A native **macOS (Apple Silicon) + Windows (x64)** desktop shell for [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), plus a safe, user-customizable **appearance system**.
 
 > **Keep Harness official. Make it yours.**
 
-DeepSeek Harness Desktop launches your existing `@deepseek-ai/dsh` runtime locally (`127.0.0.1`, dynamic port) and wraps the **official** DeepSeek Harness Web UI in a native window — without modifying Harness Core. On top of that, it adds a *surface-layer* appearance system: user-selectable themes, a DIY starter theme, a local wallpaper, and optional lightweight motion.
+DeepSeek Harness Desktop launches a self-contained bundled runtime — pinned **Node v22.22.3** + pinned **`@deepseek-ai/dsh@0.1.0-rc.6`** — locally (`127.0.0.1`, dynamic port) and wraps the **official** DeepSeek Harness Web UI in a native window — without modifying Harness Core. On top of that, it adds a *surface-layer* appearance system: themes, a DIY starter theme, local image/MP4 backgrounds, and optional lightweight motion.
+
+> **No Node setup. macOS + Windows. Clear Glass, local wallpapers, and a more reliable Harness desktop experience.**
 
 > 中文说明见文末 → [中文说明](#中文说明)
 
@@ -30,18 +32,19 @@ DeepSeek Harness already ships a capable Web UI (`dsh web`). DeepSeek Harness De
 
 ## Features
 
-- **Native macOS window** around the official Harness Web UI (local-only serving, dynamic port, readiness handling, clean shutdown, child-process cleanup).
+- **Native macOS + Windows window** around the official Harness Web UI (local-only serving, dynamic port, readiness handling, clean shutdown, child-process cleanup).
+- **Self-contained runtime** — bundled pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.6`; no system Node/npm/npx/dsh and no runtime internet bootstrap. See [Bundled runtime](#bundled-runtime).
 - **Appearance system** — surface-layer themes that sit *on top of* the official UI:
   - **Official** — the untouched Harness appearance.
   - **Ocean** — a polished, restrained ocean-inspired showcase.
   - **Starter (Sunset)** — a documented template for your own theme.
+  - **Deep Glass** — clear scene + local glass surfaces (sidebar / composer / cards / dialogs), not full-screen frosted blur.
+- **Glass Depth** — one simple control to tune surface transparency/depth.
+- **Local media backgrounds** — PNG / JPG / JPEG / WebP images and local **MP4** video (muted, looped), served only through a local controlled boundary and never uploaded. Opacity / fit / position / blur / readability-overlay controls where supported.
 - **DIY themes** — declarative JSON themes (tokens + constrained CSS + assets). No Harness Core changes, no forking, no arbitrary JavaScript.
-- **Local wallpaper** — PNG / JPG / JPEG / WebP, with fit, position, opacity, blur, and readability-overlay controls. Persists across restart; stored locally and never uploaded.
-- **Optional motion** — lightweight, decorative, respects `prefers-reduced-motion`.
+- **Optional motion** — lightweight, decorative background motion for static backgrounds/themes; respects `prefers-reduced-motion`. MP4 does not receive extra cinematic pan/zoom (it supplies its own motion).
 - **Safe fallback** — if an upstream Harness UI change makes customization unsafe, the appearance layer degrades or falls back without breaking Harness.
-- **Self-contained runtime** — bundled pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.6`; no system Node/npm/npx/dsh and no runtime internet bootstrap. See [Bundled runtime](#bundled-runtime).
 - **Desktop reliability** — an explicit health state machine (`STARTING → READY → HEALTHY`, with `DEGRADED`/`RECOVERING`/`FAILED`), owned-process-tree lifecycle, bounded health checks, and conservative recovery that never resubmits or duplicates a task.
-- **Usage & estimated cost (backend foundation)** — measured usage (tokens, API calls, model) and a clearly-labelled *estimated* cost from a dated pricing snapshot (never an official bill), computed read-only from `~/.dsh`. This is not a standalone V0.2 product entry point; inline Estimated Cost is planned for V0.2.1.
 
 ---
 
@@ -76,11 +79,15 @@ DeepSeek Harness already ships a capable Web UI (`dsh web`). DeepSeek Harness De
 
 ## Requirements
 
-- **macOS** (11+)
+**For end users (packaged V0.2):**
+
+- **macOS Apple Silicon** (11+), or **Windows x64**
 - **No system Node.js, npm, npx, or `dsh` install is required** — V0.2 ships a self-contained bundled runtime (pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.6`). See [Bundled runtime](#bundled-runtime).
 - **Python is NOT required**
 
 > V0.1 required a system Node/npm/dsh install and included an experimental automatic Harness bootstrap path. V0.2 removes that dependency for production use: the app uses its own bundled runtime and fails clearly (rather than silently falling back) if the bundled runtime is missing or corrupt.
+
+**For developers/build contributors**, see [Installation / build](#installation--build).
 
 ---
 
@@ -93,7 +100,8 @@ Harness Desktop → bundled Node v22.22.3 → pinned @deepseek-ai/dsh@0.1.0-rc.6
 ```
 
 - Pinned Harness: `@deepseek-ai/dsh@0.1.0-rc.6` (never a silent upgrade/downgrade).
-- Pinned Node: `v22.22.3` (matches the known-good V0.1 environment; integrity via `runtime/manifest.json` checksums, verified at startup).
+- Pinned Node: `v22.22.3` (matches the known-good V0.1 environment).
+- **Integrity:** at startup, SHA-256 verifies the bundled Node executable and the Harness entrypoint before executing them. (The full `node_modules` dependency closure is pinned by the materializer's committed lockfile, but only the Node executable and Harness entrypoint are SHA-256 verified at launch.)
 - Production startup performs **no** npm/npx/internet bootstrap and never silently falls back to arbitrary system Node/Harness; a missing/corrupt runtime fails closed with a clear error (integrity is verified **before** bundled code executes, and an integrity failure never falls back to the system runtime).
 - The Harness remains bound to loopback (`127.0.0.1`, dynamic port); existing `~/.dsh` session semantics are untouched.
 - Licensing/attribution: `runtime/NOTICE.md`, `runtime/THIRD_PARTY_LICENSES.json`, and the preserved `LICENSE` files inside `runtime/`. DeepSeek Harness and Node.js are redistributed under their own (MIT-style) licenses; third-party dependency licenses continue to apply (see the generated inventory).
@@ -104,7 +112,7 @@ The bundled runtime is a **build artifact**, reproduced from a clean checkout by
 npm run materialize:runtime
 ```
 
-The committed inputs are `scripts/runtime-package.json` and `scripts/runtime-package-lock.json`; `runtime/` is gitignored (never commit the dependency closure). The materializer writes `runtime/manifest.json` (checksums), `runtime/NOTICE.md` + `runtime/THIRD_PARTY_LICENSES.json` (license inventory). Only the current macOS target (`darwin-arm64`) is materialized tonight; `darwin-x64` and `windows-x64` are structurally supported but not materialized.
+The committed inputs are `scripts/runtime-package.json` and `scripts/runtime-package-lock.json`; `runtime/` is gitignored (never commit the dependency closure). The materializer writes `runtime/manifest.json` (checksums), `runtime/NOTICE.md` + `runtime/THIRD_PARTY_LICENSES.json` (license inventory). The V0.2 release ships the `darwin-arm64` and `windows-x64` runtime targets.
 
 
 
@@ -112,7 +120,13 @@ The committed inputs are `scripts/runtime-package.json` and `scripts/runtime-pac
 
 ## Installation / build
 
-Prerequisites (macOS 11+):
+### For users
+
+Download the packaged release for your platform (macOS Apple Silicon `.app`, or the Windows x64 NSIS installer), install/open it, and launch. Packaged V0.2 requires **no** separate Node/npm/npx/dsh setup.
+
+### For developers / build contributors
+
+Prerequisites:
 
 - [Rust](https://rustup.rs) ≥ 1.77 (`rustup` + `cargo`)
 - Node.js + npm **only for building/packaging** (used by the runtime materializer and Vite; not required to run the app)
@@ -122,7 +136,7 @@ npm install
 npm run materialize:runtime   # materialize the bundled runtime (pinned Node + Harness)
 npm run build:frontend        # builds the loading page + settings window (Vite)
 cargo check                   # inside src-tauri/ — type-checks the Rust backend
-npm run tauri build           # production .app bundle (outputs to src-tauri/target/release/bundle)
+npm run tauri build           # production app bundle (outputs to src-tauri/target/release/bundle)
 ```
 
 Development loop:
@@ -143,16 +157,18 @@ npm run tauri build                      # production Tauri build
 
 ---
 
-## macOS usage
+## Usage
 
-1. Launch **DeepSeek Harness Desktop**. The loading screen resolves your runtime, pins it to Harness `0.1.0-rc.6`, starts `dsh web --host 127.0.0.1 --port 0`, waits for readiness, then opens the official Harness UI.
+1. Launch **DeepSeek Harness Desktop**. The loading screen resolves the bundled runtime, pins it to Harness `0.1.0-rc.6`, starts `dsh web --host 127.0.0.1 --port 0`, waits for readiness, then opens the official Harness UI.
 2. To change the look, either:
    - click the small **gear button** in the bottom-right corner of the Harness window, or
-   - choose **DeepSeek Harness Desktop ▸ Appearance…** from the menu bar (`⌘,`).
+   - choose **DeepSeek Harness Desktop ▸ Appearance…** from the menu bar (`⌘,` on macOS).
 
-The Appearance window lets you switch themes, pick a wallpaper and tune it, toggle motion, and reset to Official. Changes apply immediately and persist.
+The Appearance window lets you switch themes, pick an image/MP4 background and tune it, set Glass Depth, toggle motion, and reset to Official. Changes apply immediately and persist.
 
 The Appearance window also has a **Language / 语言** selector with three options — **System / 跟随系统** (the default; a Chinese system locale shows Simplified Chinese, otherwise English), **简体中文**, and **English**. Your choice persists across restarts; choosing **System** keeps following the OS locale. This only localizes the Appearance settings window, never the official Harness UI.
+
+> **Windows note (known V0.2 limitation).** On some Windows launches, the bundled Node child process may leave a visible console/CMD window open while Harness is running. This does not prevent Harness from working and is tracked as a polish item for V0.2.1.
 
 > **Note on `@deepseek-ai/dsh` version pinning.** DeepSeek Harness Desktop refuses to start any Harness version other than `0.1.0-rc.6` (no silent upgrade or downgrade). This keeps the desktop shell honest about what it was validated against. See [Compatibility & fallback](#compatibility--fallback).
 
@@ -196,12 +212,13 @@ Decorative `asset` values are confined to the theme's own `assets/` directory:
 
 ---
 
-## Wallpaper
+## Wallpaper / local media
 
-- Click **Choose image…** and select a **PNG**, **JPG/JPEG**, or **WebP** file.
-- Tune **fit** (cover/contain/fill/original), **position**, **opacity**, **blur**, and the **readability overlay**.
-- The overlay preserves text contrast over light or busy images; choose **Auto** (follows the active Harness theme), **Dark**, or **Light**.
-- **Remove wallpaper** clears it. Wallpapers persist across restarts and are stored only in the app config directory.
+- Click **Choose image or video…** and select a **PNG**, **JPG/JPEG**, **WebP** image, or a local **MP4** video.
+- Images tune **fit** (cover/contain/fill/original), **position**, **opacity**, **blur**, and the **readability overlay**.
+- MP4 videos are **muted + looped**, served only through a local controlled boundary, and support the same fit/position/opacity controls where applicable (video blur is only applied conservatively via CSS/filter).
+- The overlay preserves text contrast over light or busy media; choose **Auto** (follows the active Harness theme), **Dark**, or **Light**.
+- **Remove wallpaper** clears it. Media persists across restarts and is stored only in the app config directory — never uploaded.
 
 Unsupported, renamed, oversized, or corrupt files are rejected before anything is written.
 
@@ -235,8 +252,10 @@ The current state is exposed as `data-hd-appearance-state` on `<html>` and in `w
 
 - **No Harness Core modifications.** This project is separable from upstream; a Harness upgrade primarily requires compatibility re-validation, not a rebuild of the architecture.
 - **No arbitrary theme code.** Themes are declarative JSON; there is no theme JavaScript execution, no shell, no unrestricted filesystem, no remote script execution, no theme marketplace/downloads.
-- **Wallpaper is a narrow local boundary.** Selected images are validated, size-capped, copied to the app config dir, and served only to the main window via `hd-wallpaper://`. They are never uploaded, logged as image content, committed, or synchronized.
+- **Media is a narrow local boundary.** Selected images/videos are validated, size-capped, copied to the app config dir, and served only to the main window via the local `hd-wallpaper://` scheme. They are never uploaded, logged as content, committed, or synchronized.
 - **No credentials/sessions enter the repository or release artifacts.** Harness state stays in the user's `~/.dsh`, untouched by the appearance system.
+- **The Harness backend remains loopback-only** (`127.0.0.1`, dynamic port).
+- **Remote access is NOT part of V0.2.0.** No public listener, no remote gateway, no pairing/transport is shipped in this release.
 
 ---
 
@@ -263,8 +282,8 @@ themes/                        # built-in + DIY theme sources
 
 ## Roadmap
 
-- V0.2 (current): cross-platform foundation, self-contained bundled runtime, desktop reliability, Usage/Estimated Cost backend foundation (inline cost planned for V0.2.1).
-- Later: standalone Windows build (the cross-platform seams exist; no Windows product is shipped in this milestone).
+- V0.2 (current): self-contained bundled runtime, macOS Apple Silicon + Windows x64, desktop reliability, Deep Glass appearance, local image + MP4 backgrounds, integrity + compatibility/fallback boundaries.
+- V0.2.1 (planned / experimental): remote access from phone/browser (authenticated Desktop-controlled gateway, secure transport/pairing), hiding the Windows Node console window, and a revisit of the inline usage/cost UX.
 
 ## License
 
@@ -274,11 +293,13 @@ MIT — see [LICENSE](LICENSE). This license applies to DeepSeek Harness Desktop
 
 ## 中文说明
 
-DeepSeek Harness Desktop 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的原生 **macOS** 桌面外壳，并附带一套安全、可自定义的 **外观系统**。
+DeepSeek Harness Desktop 是 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的原生 **macOS（Apple Silicon）+ Windows（x64）** 桌面外壳，并附带一套安全、可自定义的 **外观系统**。
 
 > **保持 Harness 原貌，把它变成你的。**
 
-DeepSeek Harness Desktop 会在本地启动你现有的 `@deepseek-ai/dsh` 运行时（`127.0.0.1`，动态端口），并在原生窗口中包裹**官方** DeepSeek Harness Web UI——不修改 Harness 核心。在此基础上，它叠加了一层*表层*外观系统：可选主题、DIY 入门主题、本地壁纸，以及可选的轻量动效。
+DeepSeek Harness Desktop 会在本地启动一个**自包含的内置运行时**——锁定 **Node v22.22.3** + 锁定 **`@deepseek-ai/dsh@0.1.0-rc.6`**（`127.0.0.1`，动态端口），并在原生窗口中包裹**官方** DeepSeek Harness Web UI——不修改 Harness 核心。在此基础上，它叠加了一层*表层*外观系统：主题、DIY 入门主题、本地图片/MP4 背景，以及可选的轻量动效。
+
+> **免装 Node。macOS + Windows。Clear Glass 清透玻璃、本地壁纸，以及更可靠的 Harness 桌面体验。**
 
 ### ⚠️ 非官方项目
 
@@ -294,15 +315,19 @@ DeepSeek Harness 已自带一个功能完善的 Web UI（`dsh web`）。DeepSeek
 
 ### 功能特性
 
-- **原生 macOS 窗口**——包裹官方 Harness Web UI（仅本地服务、动态端口、就绪处理、干净退出、子进程清理）。
+- **原生 macOS + Windows 窗口**——包裹官方 Harness Web UI（仅本地服务、动态端口、就绪处理、干净退出、子进程清理）。
+- **自包含运行时**——内置锁定 Node v22.22.3 + 锁定 `@deepseek-ai/dsh@0.1.0-rc.6`；无需系统 Node/npm/npx/dsh，也无需运行时联网引导。见[内置运行时](#内置运行时)。
 - **外观系统**——叠加在官方 UI *之上*的表层主题：
   - **Official（官方）**——未改动的 Harness 外观。
   - **Ocean（海洋）**——一套精致、克制的海洋风格展示。
   - **Starter（日落入门）**——一份带文档的主题模板，供你制作自己的主题。
+  - **Deep Glass（深玻璃）**——清晰场景 + 局部玻璃表面（侧栏 / 输入框 / 卡片 / 对话框），而非全屏磨砂模糊。
+- **玻璃深度**——一个简单控件即可调节表面透明度/深度。
+- **本地媒体背景**——PNG / JPG / JPEG / WebP 图片与本地 **MP4** 视频（静音、循环），仅通过本地受控边界提供，绝不上传。支持透明度 / 填充 / 位置等控件。
 - **DIY 主题**——声明式 JSON 主题（token + 受限 CSS + 资源）。不改 Harness 核心、不 fork、不执行任意 JavaScript。
-- **本地壁纸**——PNG / JPG / JPEG / WebP，支持填充方式、位置、透明度、模糊与可读性遮罩。重启后保留；仅保存在本地，绝不上传。
-- **可选动效**——轻量、装饰性，尊重 `prefers-reduced-motion`。
+- **可选动效**——静态背景/主题的轻量装饰性背景动效，尊重 `prefers-reduced-motion`；MP4 不叠加额外的电影感缩放/平移（视频自带运动）。
 - **安全回退**——若上游 Harness UI 变更使自定义不再安全，外观层会降级或回退，而不会破坏 Harness。
+- **桌面可靠性**——显式健康状态机（`STARTING → READY → HEALTHY`，含 `DEGRADED`/`RECOVERING`/`FAILED`）、自有进程树生命周期、有界健康检查，以及绝不重发或重复任务的保守恢复。
 
 ### 架构概览
 
@@ -333,11 +358,15 @@ DeepSeek Harness 已自带一个功能完善的 Web UI（`dsh web`）。DeepSeek
 
 ### 系统要求
 
-- **macOS**（11+）
+**面向最终用户（V0.2 打包版）：**
+
+- **macOS Apple Silicon**（11+），或 **Windows x64**
 - **无需安装系统 Node.js、npm、npx 或 `dsh`** —— V0.2 自带自包含内置运行时（锁定 Node v22.22.3 + 锁定 `@deepseek-ai/dsh@0.1.0-rc.6`）。见[内置运行时](#内置运行时)。
 - **不需要 Python**
 
 > V0.1 需要系统 Node/npm/dsh 安装，并包含一条实验性的自动 Harness 引导路径。V0.2 在生产使用中去掉了这一依赖：应用使用自己的内置运行时，若内置运行时缺失或损坏会清晰报错（而非静默回退）。
+
+**面向开发者/构建贡献者**，见[安装 / 构建](#安装--构建)。
 
 ---
 
@@ -361,7 +390,7 @@ Harness Desktop → 内置 Node v22.22.3 → 锁定 @deepseek-ai/dsh@0.1.0-rc.6 
 npm run materialize:runtime
 ```
 
-提交的输入为 `scripts/runtime-package.json` 与 `scripts/runtime-package-lock.json`；`runtime/` 被 gitignore（绝不提交依赖闭包）。物化脚本会写入 `runtime/manifest.json`（校验和）、`runtime/NOTICE.md` + `runtime/THIRD_PARTY_LICENSES.json`（许可清单）。今晚仅物化当前 macOS 目标（`darwin-arm64`）；`darwin-x64` 与 `windows-x64` 已结构性支持但尚未物化。
+提交的输入为 `scripts/runtime-package.json` 与 `scripts/runtime-package-lock.json`；`runtime/` 被 gitignore（绝不提交依赖闭包）。物化脚本会写入 `runtime/manifest.json`（校验和）、`runtime/NOTICE.md` + `runtime/THIRD_PARTY_LICENSES.json`（许可清单）。V0.2 发布版随附 `darwin-arm64` 与 `windows-x64` 两个运行时目标。
 
 
 
@@ -395,16 +424,18 @@ npm run build:frontend                   # Vite 生产构建
 npm run tauri build                      # 生产 Tauri 构建
 ```
 
-### macOS 使用
+### 使用
 
-1. 启动 **DeepSeek Harness Desktop**。加载页会解析你的运行时，将其锁定到 Harness `0.1.0-rc.6`，启动 `dsh web --host 127.0.0.1 --port 0`，等待就绪，然后打开官方 Harness UI。
+1. 启动 **DeepSeek Harness Desktop**。加载页会解析内置运行时，将其锁定到 Harness `0.1.0-rc.6`，启动 `dsh web --host 127.0.0.1 --port 0`，等待就绪，然后打开官方 Harness UI。
 2. 要更改外观，可以：
    - 点击 Harness 窗口右下角的小**齿轮按钮**，或
-   - 从菜单栏选择 **DeepSeek Harness Desktop ▸ Appearance…**（`⌘,`）。
+   - 从菜单栏选择 **DeepSeek Harness Desktop ▸ Appearance…**（macOS 上为 `⌘,`）。
 
-外观窗口可让你切换主题、选择并调节壁纸、开关动效，并重置为 Official。更改即时生效并持久保存。
+外观窗口可让你切换主题、选择并调节图片/MP4 背景、设置玻璃深度、开关动效，并重置为 Official。更改即时生效并持久保存。
 
 外观窗口还有一个 **Language / 语言** 选择器，共三个选项——**System / 跟随系统**（默认；中文系统语言环境显示简体中文，否则显示英文）、**简体中文** 和 **English**。你的选择会跨重启保留；选择 **System** 则持续跟随系统语言环境。这只本地化外观设置窗口，绝不本地化官方 Harness UI。
+
+> **Windows 说明（V0.2 已知限制）。** 在部分 Windows 启动场景下，内置 Node 子进程可能会在 Harness 运行期间保持一个可见的控制台/CMD 窗口。这不会妨碍 Harness 正常工作，已作为 V0.2.1 的打磨项跟踪。
 
 > **关于 `@deepseek-ai/dsh` 版本锁定的说明。** DeepSeek Harness Desktop 拒绝启动 `0.1.0-rc.6` 以外的任何 Harness 版本（不会静默升级或降级）。这让桌面外壳如实说明它针对哪个版本做了验证。见[兼容性与回退](#compatibility--fallback)。
 
@@ -444,12 +475,13 @@ npm run tauri build                      # 生产 Tauri 构建
 - `assets/<file>` 引用通过规范路径包含关系解析——`../`、绝对路径、反斜杠、符号链接以及跨主题访问都会被拒绝。不存在的文件会被拒绝。
 - 此外，`asset` 也可以是 CSS 渐变或 `data:image/*;base64,…` URI（仅图片 MIME 类型，大小受限）；`file:`、`http:`、`https:` 和协议相对 URL 会被拒绝。
 
-### 壁纸
+### 壁纸 / 本地媒体
 
-- 点击 **Choose image…（选择图片）** 并选择一个 **PNG**、**JPG/JPEG** 或 **WebP** 文件。
-- 调节 **fit（填充方式）**（cover/contain/fill/original）、**position（位置）**、**opacity（透明度）**、**blur（模糊）** 和 **readability overlay（可读性遮罩）**。
-- 遮罩在明亮或复杂的图片上保持文字对比度；可选 **Auto（自动，跟随当前 Harness 主题）**、**Dark（深色）** 或 **Light（浅色）**。
-- **Remove wallpaper（移除壁纸）** 会清除它。壁纸跨重启保留，且只保存在应用配置目录中。
+- 点击 **Choose image or video…（选择图片或视频）** 并选择一个 **PNG**、**JPG/JPEG**、**WebP** 图片，或一个本地 **MP4** 视频。
+- 图片可调节 **fit（填充方式）**（cover/contain/fill/original）、**position（位置）**、**opacity（透明度）**、**blur（模糊）** 和 **readability overlay（可读性遮罩）**。
+- MP4 视频为**静音 + 循环**，仅通过本地受控边界提供，并在适用处支持同样的填充/位置/透明度控件（视频模糊仅在性能允许时谨慎应用）。
+- 遮罩在明亮或复杂的媒体上保持文字对比度；可选 **Auto（自动，跟随当前 Harness 主题）**、**Dark（深色）** 或 **Light（浅色）**。
+- **Remove wallpaper（移除壁纸）** 会清除它。媒体跨重启保留，且只保存在应用配置目录中——绝不上传。
 
 不支持的、被改名的、过大的或损坏的文件会在写入任何内容之前被拒绝。
 
@@ -501,8 +533,8 @@ themes/                        # 内置 + DIY 主题源
 
 ### 路线图
 
-- V0.2（当前）：跨平台基础、自包含内置运行时、桌面可靠性、用量/估算成本后端基础（内联成本计划于 V0.2.1）。
-- 后续：独立的 Windows 构建（跨平台接缝已就位；本里程碑不交付 Windows 产品）。
+- V0.2（当前）：自包含内置运行时、macOS Apple Silicon + Windows x64、桌面可靠性、Deep Glass 外观、本地图片 + MP4 背景、完整性与兼容/回退边界。
+- V0.2.1（规划 / 实验）：手机/浏览器远程访问（经身份验证的桌面控制网关、安全传输/配对）、隐藏 Windows Node 控制台窗口，以及重新审视内联用量/成本体验。
 
 ### 许可证
 
