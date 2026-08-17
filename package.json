@@ -1,7 +1,7 @@
 {
   "name": "deepseek-harness-desktop",
   "version": "0.2.0",
-  "description": "DeepSeek Harness Desktop V0.1 — native macOS desktop shell for DeepSeek Harness 0.1.0-rc.6, with a safe DIY appearance system",
+  "description": "DeepSeek Harness Desktop V0.1 — native macOS desktop shell for DeepSeek Harness 0.1.0-rc.7, with a safe DIY appearance system",
   "private": true,
   "type": "module",
   "scripts": {

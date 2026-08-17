@@ -55,7 +55,7 @@ function makeSandbox() {
   rootEl.childElementCount = 1;
   rootEl._text = "mounted";
 
-  // Real composer structure (bundled dsh 0.1.0-rc.6): a transparent textarea
+  // Real composer structure (bundled dsh 0.1.0-rc.7): a transparent textarea
   // whose visible text is painted by an absolutely-positioned, pointer-events
   // none sibling ("backdrop"). The fix must tag that layer.
   const composer = makeEl("div");

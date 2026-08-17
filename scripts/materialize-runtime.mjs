@@ -11,7 +11,7 @@
 //
 // What it does:
 //   1. downloads the pinned Node artifact and verifies its official SHA-256,
-//   2. `npm ci` the pinned @deepseek-ai/dsh@0.1.0-rc.6 closure from the
+//   2. `npm ci` the pinned @deepseek-ai/dsh@0.1.0-rc.7 closure from the
 //      committed package-lock.json (exact, reproducible),
 //   3. assembles runtime/<target>/node + runtime/<target>/harness,
 //   4. writes runtime/manifest.json (integrity checksums),
@@ -40,7 +40,7 @@ const REPO_ROOT = join(__dirname, "..");
 const NODE_VERSION = "22.22.3";
 const NODE_DIST_BASE = `https://nodejs.org/dist/v${NODE_VERSION}`;
 const DSH_PACKAGE = "@deepseek-ai/dsh";
-const DSH_VERSION = "0.1.0-rc.6";
+const DSH_VERSION = "0.1.0-rc.7";
 const MANIFEST_SCHEMA_VERSION = 1;
 
 const TARGETS = {

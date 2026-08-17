@@ -404,7 +404,7 @@
 
   // COMPOSER INPUT TEXT READABILITY (V0.2 hotfix).
   //
-  // REAL-DOM root cause (verified against bundled dsh 0.1.0-rc.6):
+  // REAL-DOM root cause (verified against bundled dsh 0.1.0-rc.7):
   //   * the composer input is a `textarea` whose OWN text is intentionally
   //     transparent (`color:#0000`); the visible text is painted by a sibling
   //     `.uV2eYG_backdrop` layer (`color:var(--dsw-alias-label-primary)`),
