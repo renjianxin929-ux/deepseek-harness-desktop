@@ -1,9 +1,9 @@
-// Compatibility probe against the REAL bundled rc.6 Harness source. Detects
+// Compatibility probe against the REAL bundled rc.7 Harness source. Detects
 // selector/token drift that would silently break the appearance layer (the
 // engine relies on #root + the --dsw-alias-* / --dsw-specific-* tokens, not on
 // hashed component classes). Skips gracefully when the bundled runtime isn't
 // materialized (it is gitignored).
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert";
@@ -14,14 +14,23 @@ const harnessRoot = join(root, "runtime", "darwin-arm64", "harness", "node_modul
 const indexHtml = join(harnessRoot, "dsh-web-frontend", "dist", "index.html");
 const themeCss = join(harnessRoot, "dsh-client-ui-theme", "lib", "styles", "design-platform.css");
 const layoutJs = join(harnessRoot, "dsh-client-ui-layout", "lib", "client.js");
-const frontendJs = join(harnessRoot, "dsh-web-frontend", "dist", "assets", "index-Dqw48FrP.js");
 const conversationJs = join(harnessRoot, "dsh-client-ui-conversation", "lib", "client.js");
+
+// The frontend asset filenames carry content hashes that change between
+// releases; discover them instead of pinning a hash.
+function findAsset(namePrefix, dir) {
+  const assetsDir = join(dir, "assets");
+  if (!existsSync(assetsDir)) return null;
+  const hit = readdirSync(assetsDir).find((f) => f.startsWith(namePrefix) && f.endsWith(".js"));
+  return hit ? join(assetsDir, hit) : null;
+}
+const frontendJs = findAsset("index-", join(harnessRoot, "dsh-web-frontend", "dist"));
 
 if (
   !existsSync(indexHtml) ||
   !existsSync(themeCss) ||
   !existsSync(layoutJs) ||
-  !existsSync(frontendJs) ||
+  !frontendJs ||
   !existsSync(conversationJs)
 ) {
   console.log("harness_compat.test.mjs: skipped (bundled runtime not materialized)");
