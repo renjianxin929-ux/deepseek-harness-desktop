@@ -28,7 +28,7 @@ function makeSandbox() {
       setAttribute(k, v) { this.attrs[k] = String(v); },
       getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; },
       removeAttribute(k) { delete this.attrs[k]; },
-      appendChild(c) { this.children.push(c); c.parentNode = this; return c; },
+      appendChild(c) { this.children.push(c); c.parentNode = this; c.parentElement = this; return c; },
       removeChild(c) { const i = this.children.indexOf(c); if (i >= 0) { this.children.splice(i, 1); c.parentNode = null; } return c; },
       addEventListener() {},
       classList: { add() {}, remove() {}, contains() { return false; } },
@@ -55,15 +55,61 @@ function makeSandbox() {
   rootEl.childElementCount = 1;
   rootEl._text = "mounted";
 
+  // Real composer structure (bundled dsh 0.1.0-rc.6): a transparent textarea
+  // whose visible text is painted by an absolutely-positioned, pointer-events
+  // none sibling ("backdrop"). The fix must tag that layer.
+  const composer = makeEl("div");
+  composer._text = "x";
+  const ta = makeEl("textarea");
+  ta.attrs["data-hd-ta"] = "1";
+  const mirror = makeEl("div");
+  mirror.attrs["data-hd-mirror"] = "1";
+  const backdrop = makeEl("div");
+  backdrop.attrs["data-hd-backdrop"] = "1";
+  composer.appendChild(mirror);
+  composer.appendChild(backdrop);
+  composer.appendChild(ta);
+  rootEl.appendChild(composer);
+
   const sandbox = {
     console: { info() {}, error() {}, warn() {}, log() {} },
     Image: function () { return {}; },
+    MutationObserver: function () { return { observe() {}, disconnect() {} }; },
     setInterval(cb) { cb(); return 1; },
     clearInterval() {},
     setTimeout() { return 0; },
     clearTimeout() {},
     matchMedia() { return { matches: false }; },
-    getComputedStyle() { return { getPropertyValue() { return "rgba(0,0,0,1)"; } }; },
+    getComputedStyle(el) {
+      const s = {
+        getPropertyValue() { return "rgba(0,0,0,1)"; },
+        backgroundColor: "transparent",
+        backgroundImage: "none",
+        backdropFilter: "",
+        webkitBackdropFilter: "",
+        position: "static",
+        zIndex: "auto",
+        visibility: "visible",
+        pointerEvents: "auto",
+        color: "",
+        opacity: "1",
+        fontWeight: "400",
+      };
+      if (el && el.attrs && el.attrs["data-hd-backdrop"]) {
+        s.position = "absolute";
+        s.pointerEvents = "none";
+        s.color = "rgb(15,17,21)";
+        s.visibility = "visible";
+      }
+      if (el && el.attrs && el.attrs["data-hd-mirror"]) {
+        s.visibility = "hidden";
+      }
+      if (el && el.attrs && el.attrs["data-hd-ta"]) {
+        s.position = "absolute";
+        s.color = "rgba(0,0,0,0)";
+      }
+      return s;
+    },
   };
   sandbox.window = sandbox;
   sandbox.document = {
@@ -71,13 +117,20 @@ function makeSandbox() {
     addEventListener() {},
     getElementById(id) { return byId[id] || null; },
     createElement(tag) { return makeEl(tag); },
-    querySelector(sel) { return sel === "#root" ? rootEl : null; },
+    querySelector(sel) {
+      if (sel === "#root") return rootEl;
+      if (sel === "#root textarea, #root [contenteditable=\"true\"]") return ta;
+      return null;
+    },
     querySelectorAll() { return []; },
     head: { appendChild() {} },
     documentElement: { setAttribute() {}, appendChild() {}, style: {} },
     body: { appendChild() {}, nodeType: 1 },
   };
   sandbox.__byId = byId;
+  sandbox.__composer = composer;
+  sandbox.__ta = ta;
+  sandbox.__backdrop = backdrop;
   vm.createContext(sandbox);
   vm.runInContext(engineSrc, sandbox, { filename: "engine.js" });
   return sandbox;
@@ -137,6 +190,27 @@ const deepGlassPayload = {
     glass.textContent.includes("#root [contenteditable=\"true\"]"),
     "blur targets the composer, not the frame"
   );
+
+  // Composer input text readability (V0.2 hotfix) regression:
+  // the real text layer (backdrop) must be tagged, the fix CSS must be injected,
+  // and its contract (opaque, non-transparent, semibold, webkit text-fill
+  // currentColor) must be present for light and dark modes.
+  const fixCss = sandbox.__byId["hd-composer-text"];
+  assert.ok(fixCss, "composer text fix CSS must be injected");
+  assert.ok(
+    sandbox.__backdrop.attrs["data-hd-composer-text"] === "true",
+    "backdrop text layer must be tagged with data-hd-composer-text"
+  );
+  assert.ok(fixCss.textContent.includes("font-weight:600 !important"), "input text must be semibold");
+  assert.ok(fixCss.textContent.includes("-webkit-text-fill-color:currentColor !important"), "webkit text-fill must follow color");
+  assert.ok(fixCss.textContent.includes("opacity:1 !important"), "input text must be fully opaque");
+  assert.ok(fixCss.textContent.includes("color:var(--dsw-alias-label-primary,#111111) !important"), "light input text near-black");
+  assert.ok(
+    fixCss.textContent.includes("body[data-ds-dark-theme] #root [data-hd-composer-text]"),
+    "dark mode input text override present"
+  );
+  assert.ok(fixCss.textContent.includes("caret-color:var(--dsw-alias-state-business-primary"), "caret must stay visible");
+  assert.ok(fixCss.textContent.includes("#root [contenteditable=\"true\"]::selection"), "selection must stay readable");
   console.log("engine_apply.test.mjs (image): assertions passed");
 }
 
