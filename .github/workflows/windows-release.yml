@@ -69,6 +69,13 @@ jobs:
       - name: Build Windows installer (NSIS)
         run: npm run build -- --bundles nsis
 
+      - name: Packaged-app E2E (install, launch, Harness ready, UI served)
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem "src-tauri/target/release/bundle/nsis/*-setup.exe" | Select-Object -First 1
+          if (-not $installer) { throw "no NSIS installer produced" }
+          & "${{ github.workspace }}/scripts/e2e-windows-app.ps1" -Installer $installer.FullName
+
       - name: Upload installer + runtime metadata
         uses: actions/upload-artifact@v4
         with:
