@@ -25,17 +25,24 @@ if (-not (Test-Path $Installer)) {
   Fail "installer not found: $Installer"
 }
 
-# 1. Install silently. The NSIS setup accepts /S (silent) + /D=target dir.
-$installDir = Join-Path $env:LOCALAPPDATA "DeepSeekHarnessDesktopE2E"
-if (Test-Path $installDir) { Remove-Item -Recurse -Force $installDir }
-$proc = Start-Process -FilePath $Installer -ArgumentList "/S", "/D=$installDir" -PassThru -Wait
+# 1. Install silently (NSIS /S). NSIS `/D=` must be the last argument and is
+#    quoted-path sensitive; instead of fighting it we install to the
+#    installer's default location and then locate the exe under LOCALAPPDATA.
+$proc = Start-Process -FilePath $Installer -ArgumentList "/S" -PassThru -Wait
 if ($proc.ExitCode -ne 0) {
   Fail "installer exit code $($proc.ExitCode)"
 }
-$exe = Join-Path $installDir "DeepSeek Harness Desktop.exe"
-if (-not (Test-Path $exe)) {
-  Fail "installed exe not found at $exe (NSIS /D may need exact quoting)"
+$exe = Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter "DeepSeek Harness Desktop.exe" -ErrorAction SilentlyContinue |
+  Select-Object -First 1
+if (-not $exe) {
+  # Also try the per-user Programs directory (NSIS default for per-user installs).
+  $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Programs") -Recurse -Filter "DeepSeek Harness Desktop.exe" -ErrorAction SilentlyContinue |
+    Select-Object -First 1
 }
+if (-not $exe) {
+  Fail "installed exe not found under LOCALAPPDATA after silent install"
+}
+$exe = $exe.FullName
 Write-Host "E2E: installed to $exe"
 
 # 2. Clear the previous startup log so we only read this launch.
