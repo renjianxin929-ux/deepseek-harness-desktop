@@ -1,17 +1,25 @@
 # DeepSeek Harness Desktop — Windows packaged-app E2E (CI, windows-latest).
 #
-# Installs the NSIS installer silently, launches the packaged app, waits for
-# the bundled Harness runtime to become ready (startup.log `[ready] http://…`),
-# then verifies the real Harness Web UI answers over HTTP with the pinned
-# rc.7 plugin set. This is the closest-to-real run-level check that can run in
-# CI (a real GUI session is not available, but the full desktop process tree,
-# bundled Node + dsh web server, and HTTP readiness all execute for real).
+# Launches the desktop app, waits for the bundled Harness runtime to become
+# ready (startup.log `[ready] http://…`), then verifies the real Harness Web
+# UI answers over HTTP with the pinned rc.7 plugin set. This is the
+# closest-to-real run-level check that can run in CI (a real GUI session is
+# not available, but the full desktop process tree, bundled Node + dsh web
+# server, and HTTP readiness all execute for real).
 #
-# Usage:  powershell -File scripts/e2e-windows-app.ps1 -Installer <path>
-# Exit:   0 = PASS, 1 = FAIL.
+# Launch sources:
+#   -Exe <path>       run an app executable directly (CI uses the fresh
+#                     `tauri build` release exe — avoids NSIS /S quirks on
+#                     service accounts)
+#   -Installer <path> (optional) silently install the NSIS installer first
+#
+# Usage: powershell -File scripts/e2e-windows-app.ps1 -Exe <path>
+#        powershell -File scripts/e2e-windows-app.ps1 -Installer <path>
+# Exit:  0 = PASS, 1 = FAIL.
 
 param(
-  [Parameter(Mandatory = $true)][string]$Installer
+  [Parameter(Mandatory = $false)][string]$Exe,
+  [Parameter(Mandatory = $false)][string]$Installer
 )
 
 $ErrorActionPreference = "Stop"
@@ -21,29 +29,46 @@ function Fail([string]$msg) {
   exit 1
 }
 
-if (-not (Test-Path $Installer)) {
-  Fail "installer not found: $Installer"
+if (-not $Exe -and -not $Installer) {
+  Fail "provide -Exe <path> or -Installer <path>"
 }
 
-# 1. Install silently (NSIS /S). NSIS `/D=` must be the last argument and is
-#    quoted-path sensitive; instead of fighting it we install to the
-#    installer's default location and then locate the exe under LOCALAPPDATA.
-$proc = Start-Process -FilePath $Installer -ArgumentList "/S" -PassThru -Wait
-if ($proc.ExitCode -ne 0) {
-  Fail "installer exit code $($proc.ExitCode)"
+$exePath = $null
+if ($Exe) {
+  if (-not (Test-Path $Exe)) { Fail "exe not found: $Exe" }
+  $exePath = (Resolve-Path $Exe).Path
+} else {
+  if (-not (Test-Path $Installer)) { Fail "installer not found: $Installer" }
+
+  # Silent install (NSIS /S). Tauri NSIS installs to
+  # $LOCALAPPDATA\<productName> by default; search a few roots, waiting for
+  # the file tree to settle after the installer process exits.
+  $proc = Start-Process -FilePath $Installer -ArgumentList "/S" -PassThru -Wait
+  if ($proc.ExitCode -ne 0) {
+    Fail "installer exit code $($proc.ExitCode)"
+  }
+  $candidates = @(
+    $env:LOCALAPPDATA,
+    (Join-Path $env:LOCALAPPDATA "Programs"),
+    $env:ProgramFiles,
+    ${env:ProgramFiles(x86)}
+  )
+  $found = $null
+  for ($i = 0; $i -lt 10 -and -not $found; $i++) {
+    foreach ($root in $candidates) {
+      if (-not $root -or -not (Test-Path $root)) { continue }
+      $found = Get-ChildItem -Path $root -Recurse -Filter "DeepSeek Harness Desktop.exe" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+      if ($found) { break }
+    }
+    if (-not $found) { Start-Sleep -Seconds 3 }
+  }
+  if (-not $found) {
+    Fail "installed exe not found after silent install"
+  }
+  $exePath = $found.FullName
 }
-$exe = Get-ChildItem -Path $env:LOCALAPPDATA -Recurse -Filter "DeepSeek Harness Desktop.exe" -ErrorAction SilentlyContinue |
-  Select-Object -First 1
-if (-not $exe) {
-  # Also try the per-user Programs directory (NSIS default for per-user installs).
-  $exe = Get-ChildItem -Path (Join-Path $env:LOCALAPPDATA "Programs") -Recurse -Filter "DeepSeek Harness Desktop.exe" -ErrorAction SilentlyContinue |
-    Select-Object -First 1
-}
-if (-not $exe) {
-  Fail "installed exe not found under LOCALAPPDATA after silent install"
-}
-$exe = $exe.FullName
-Write-Host "E2E: installed to $exe"
+Write-Host "E2E: using exe $exePath"
 
 # 2. Clear the previous startup log so we only read this launch.
 $logDir = Join-Path $env:LOCALAPPDATA "HarnessDesktop\logs"
@@ -51,8 +76,8 @@ if (Test-Path (Join-Path $logDir "startup.log")) {
   Remove-Item -Force (Join-Path $logDir "startup.log")
 }
 
-# 3. Launch the packaged app.
-$app = Start-Process -FilePath $exe -PassThru
+# 3. Launch the app.
+$app = Start-Process -FilePath $exePath -PassThru
 Write-Host "E2E: launched app pid=$($app.Id)"
 
 # 4. Wait up to 120s for `[ready] http://127.0.0.1:<port>` in startup.log.
@@ -73,20 +98,15 @@ while ((Get-Date) -lt $deadline) {
   Start-Sleep -Seconds 2
 }
 if (-not $port) {
-  # Diagnostics: dump the tail of the log + running processes before failing.
   if (Test-Path $logPath) {
     Write-Host "---- startup.log tail ----"
     Get-Content -Tail 30 $logPath
   }
-  Write-Host "---- harness/node processes ----"
-  Get-Process | Where-Object { $_.ProcessName -match "deepseek|harness|node" } |
-    Select-Object ProcessName, Id | Format-Table | Out-String | Write-Host
   Fail "app never became ready (no '[ready] http://127.0.0.1:<port>' in startup.log)"
 }
 Write-Host "E2E: Harness ready on port $port"
 
-# 5. Verify the Harness Web UI answers over HTTP with the pinned rc.7 plugin
-#    set (index.html must reference the real conversation/theme client).
+# 5. Verify the Harness Web UI answers over HTTP with the rc.7 plugin set.
 $body = (Invoke-WebRequest -UseBasicParsing -Uri "http://127.0.0.1:$port/" -TimeoutSec 15).Content
 if (-not $body -or -not $body.Contains("dsh-client-ui-conversation")) {
   Fail "Harness UI did not serve the conversation client (unexpected page)"
@@ -98,5 +118,5 @@ if (-not $app.HasExited) { Stop-Process -Id $app.Id -Force -ErrorAction Silently
 Get-Process | Where-Object { $_.ProcessName -match "deepseek|harness" } |
   Stop-Process -Force -ErrorAction SilentlyContinue
 
-Write-Host "E2E PASS: packaged app installed, launched, Harness rc.7 became ready and served the UI" -ForegroundColor Green
+Write-Host "E2E PASS: app launched, Harness rc.7 became ready and served the UI" -ForegroundColor Green
 exit 0
