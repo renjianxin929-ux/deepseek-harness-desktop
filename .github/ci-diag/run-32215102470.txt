@@ -1,0 +1,21 @@
+=== context ===
+x86_64
+ProductName:		macOS
+ProductVersion:		15.7.7
+BuildVersion:		24G720
+=== ci-progress ===
+tauri-build
+=== bundle state ===
+total 0
+drwxr-xr-x  3 runner  staff  96 Aug 19 04:31 .
+drwxr-xr-x  3 runner  staff  96 Aug 19 04:31 ..
+drwxr-xr-x  3 runner  staff  96 Aug 19 04:31 DeepSeek Harness Desktop.app
+total 80
+drwxr-xr-x  3 runner  staff     96 Aug 19 04:31 _up_
+drwxr-xr-x  4 runner  staff    128 Aug 19 04:31 .
+drwxr-xr-x  5 runner  staff    160 Aug 19 04:31 ..
+-rw-r--r--  1 runner  staff  37222 Aug 19 04:15 icon.icns
+ls: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime: No such file or directory
+ls: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime/: No such file or directory
+ls: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime/darwin-x64/node/bin/: No such file or directory
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop: Mach-O 64-bit executable x86_64
