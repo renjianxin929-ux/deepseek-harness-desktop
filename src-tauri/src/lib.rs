@@ -34,6 +34,7 @@ mod reliability;
 mod runtime;
 mod session_guard;
 mod usage;
+mod web_compat;
 use appearance::AppearanceState;
 
 const REQUIRED_VERSION: &str = "0.1.0-rc.7";
@@ -1410,13 +1411,16 @@ pub fn run() {
                 );
             }
 
-            // Appearance engine + the stale session guard + the read-only
-            // current-session beacon. All are plain injected page scripts with
-            // no Tauri IPC; the guard only ever performs a read-only
-            // session.list query plus, at most, a reload; the beacon only reads
-            // the persisted selection and fires an image beacon.
+            // Web Platform compatibility shim runs FIRST (document start,
+            // before the Harness bundle), then the appearance engine + the
+            // stale session guard + the read-only current-session beacon. All
+            // are plain injected page scripts with no Tauri IPC; the guard
+            // only ever performs a read-only session.list query plus, at most,
+            // a reload; the beacon only reads the persisted selection and
+            // fires an image beacon.
             let init_script = format!(
-                "{}\n{}\n{}",
+                "{}\n{}\n{}\n{}",
+                web_compat::SCRIPT,
                 appearance::build_init_script(&appearance_state),
                 session_guard::SCRIPT,
                 usage::BEACON

@@ -114,4 +114,67 @@ assert.ok(
   "composer caret must be explicitly colored (visible against glass)"
 );
 
+// 6. Old-WKWebView compatibility contract (macOS Monterey hotfix). rc.7's
+//    bounded-unary request path uses AbortSignal.timeout() and AbortSignal.any()
+//    (dsh-host-apiproxy fetch carrier postJson, dsh-client-connection postJson,
+//    dsh-llm-retry, dsh-agent-loop, ...). macOS Monterey's WKWebView lacks
+//    AbortSignal.timeout, so Settings RPC fails there. The Desktop-controlled
+//    shim (src-tauri/src/web_compat.js) must exist, run before the Harness
+//    bundle, and install feature-detected fallbacks only when natives are
+//    missing — so rc.7's usage is covered without ever overriding natives.
+{
+  const { readdirSync } = await import("node:fs");
+  const timeoutUsage = { count: 0, files: [] };
+  const anyUsage = { count: 0, files: [] };
+  const walk = (dir) => {
+    let entries;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith(".") || e.name === "node_modules") continue;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (e.name.endsWith(".js")) {
+        let src;
+        try {
+          src = readFileSync(full, "utf8");
+        } catch {
+          continue;
+        }
+        const tc = (src.match(/AbortSignal\.timeout/g) || []).length;
+        const ac = (src.match(/AbortSignal\.any/g) || []).length;
+        const rel = full.slice(harnessRoot.length + 1); // relative to @deepseek-ai/
+        if (tc) timeoutUsage.count += tc, timeoutUsage.files.push(rel);
+        if (ac) anyUsage.count += ac, anyUsage.files.push(rel);
+      }
+    }
+  };
+  walk(harnessRoot);
+  assert.ok(
+    timeoutUsage.count > 0,
+    `rc.7 closure must use AbortSignal.timeout (found ${timeoutUsage.count} in ${timeoutUsage.files.join(", ")})`
+  );
+  assert.ok(
+    anyUsage.count > 0,
+    `rc.7 closure must use AbortSignal.any (found ${anyUsage.count} in ${anyUsage.files.join(", ")})`
+  );
+  console.log(
+    `rc.7 AbortSignal contract: timeout x${timeoutUsage.count} (${timeoutUsage.files.slice(0, 4).join(", ")}), any x${anyUsage.count}`
+  );
+
+  const shim = readFileSync(join(root, "src-tauri", "src", "web_compat.js"), "utf8");
+  assert.ok(shim.includes("window.__HD_WEB_COMPAT__"), "shim exposes __HD_WEB_COMPAT__ marker");
+  assert.ok(
+    shim.includes('MARK.timeoutNative = typeof AbortSignal.timeout === "function"'),
+    "shim timeout polyfill is feature-detected"
+  );
+  assert.ok(
+    shim.includes('MARK.anyNative = typeof AbortSignal.any === "function"'),
+    "shim any polyfill is feature-detected"
+  );
+}
+
 console.log("harness_compat.test.mjs: all assertions passed");

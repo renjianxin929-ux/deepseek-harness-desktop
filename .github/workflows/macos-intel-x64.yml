@@ -65,11 +65,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Engine tests (engine, engine-apply, guard)
+      - name: Engine tests (engine, engine-apply, guard, web-compat)
         run: |
           npm run test:engine
           npm run test:engine-apply
           npm run test:guard
+          npm run test:web-compat
 
       # ── Native x64 runtime materialization (never copied from Apple Silicon) ─
       - name: Materialize darwin-x64 runtime (native Intel)

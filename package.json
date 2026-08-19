@@ -15,9 +15,10 @@
     "test:engine-apply": "node tests/engine_apply.test.mjs",
     "test:harness-compat": "node tests/harness_compat.test.mjs",
     "test:guard": "node tests/session_guard.test.mjs",
-    "test": "npm run typecheck && npm run test:engine && npm run test:engine-apply && npm run test:harness-compat && npm run test:guard",
+    "test": "npm run typecheck && npm run test:engine && npm run test:engine-apply && npm run test:harness-compat && npm run test:guard && npm run test:web-compat",
     "materialize:runtime": "node scripts/materialize-runtime.mjs",
-    "smoke:windows-runtime": "node scripts/smoke-windows-runtime.mjs"
+    "smoke:windows-runtime": "node scripts/smoke-windows-runtime.mjs",
+    "test:web-compat": "node tests/web_compat.test.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2"
