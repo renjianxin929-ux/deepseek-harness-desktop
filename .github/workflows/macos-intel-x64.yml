@@ -73,7 +73,9 @@ jobs:
 
       # ── Native x64 runtime materialization (never copied from Apple Silicon) ─
       - name: Materialize darwin-x64 runtime (native Intel)
-        run: node scripts/materialize-runtime.mjs --target darwin-x64
+        run: |
+          node scripts/materialize-runtime.mjs --target darwin-x64
+          echo "materialize" > ci-progress.txt
 
       - name: Verify runtime manifest + native x64 node binary
         run: |
@@ -111,7 +113,9 @@ jobs:
 
       # ── Tauri x86_64 release build (minimumSystemVersion stays 11.0) ────────
       - name: Build Tauri x86_64 release (.app)
-        run: npx tauri build --target x86_64-apple-darwin --bundles app
+        run: |
+          npx tauri build --target x86_64-apple-darwin --bundles app
+          echo "tauri-build" > ci-progress.txt
 
       - name: Verify packaged app binary architecture
         run: |
@@ -134,6 +138,7 @@ jobs:
           fi
           echo "BUNDLED_NODE_ARCH_X86_64=OK"
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+          echo "verify-arch" > ci-progress.txt
 
       # ── Packaged-app backend smoke (isolated HOME, no system node) ──────────
       - name: Packaged app backend smoke (isolated HOME)
@@ -184,6 +189,19 @@ jobs:
           mkdir -p .github/ci-diag
           DIAG=".github/ci-diag/run-${GITHUB_RUN_ID}.txt"
           { echo "=== context ==="; uname -m; sw_vers; } >> "$DIAG" || true
+          if [ -f ci-progress.txt ]; then echo "=== ci-progress ===" >> "$DIAG"; cat ci-progress.txt >> "$DIAG" || true; fi
+          {
+            echo "=== bundle state ==="
+            ls -la src-tauri/target/x86_64-apple-darwin/release/bundle/macos/ 2>&1 || true
+            APP2="$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' 2>/dev/null | head -1)"
+            if [ -n "$APP2" ]; then
+              ls -la "$APP2/Contents/Resources/" 2>&1 || true
+              ls -ld "$APP2/Contents/Resources/runtime" 2>&1 || true
+              ls -la "$APP2/Contents/Resources/runtime/" 2>&1 || true
+              ls -la "$APP2/Contents/Resources/runtime/darwin-x64/node/bin/" 2>&1 || true
+              file "$APP2/Contents/MacOS/"* 2>&1 || true
+            fi
+          } >> "$DIAG" || true
           if [ -f smoke-output.txt ]; then cat smoke-output.txt >> "$DIAG" || true; fi
           if [ -f SHA256SUMS-intel.txt ]; then
             echo "=== SHA256SUMS-intel.txt ===" >> "$DIAG"
