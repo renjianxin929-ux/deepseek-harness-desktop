@@ -119,6 +119,7 @@ jobs:
 
       - name: Verify packaged app binary architecture
         run: |
+          {
           set -euxo pipefail
           APP="$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)"
           BIN="$(find "$APP/Contents/MacOS" -maxdepth 1 -type f | head -1)"
@@ -129,19 +130,22 @@ jobs:
           echo "TAURI_BINARY_ARCH_X86_64=OK"
           # Tauri v2 maps `..`-prefixed resources (../runtime) under
           # Contents/Resources/_up_/ — locate the bundled node in either layout.
-          BUNDLED_NODE="$(find "$APP/Contents/Resources" -path '*/runtime/darwin-x64/node/bin/node' -type f | head -1)"
+          BUNDLED_NODE="$(find "$APP/Contents/Resources" -path '*/runtime/darwin-x64/node/bin/node' -type f 2>/dev/null | head -1)"
+          echo "BUNDLED_NODE=[$BUNDLED_NODE]"
           if [ -z "$BUNDLED_NODE" ]; then
             echo "::error::bundled node missing in packaged app (searched under Contents/Resources)"
-            find "$APP/Contents/Resources" -maxdepth 6 -name runtime -type d 2>/dev/null || true
+            find "$APP/Contents/Resources" -maxdepth 12 -name node 2>/dev/null | head -20 || true
             ls -la "$APP/Contents/Resources" || true
+            ls -la "$APP/Contents/Resources/_up_" 2>/dev/null || true
             exit 1
           fi
           if ! file "$BUNDLED_NODE" | grep -q "x86_64"; then
             echo "::error::bundled node is not x86_64: $BUNDLED_NODE"; exit 1;
           fi
-          echo "BUNDLED_NODE_ARCH_X86_64=OK ($BUNDLED_NODE)"
+          echo "BUNDLED_NODE_ARCH_X86_64=OK"
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
           echo "verify-arch" > ci-progress.txt
+          } 2>&1 | tee verify-output.txt
 
       # ── Packaged-app backend smoke (isolated HOME, no system node) ──────────
       - name: Packaged app backend smoke (isolated HOME)
@@ -206,6 +210,15 @@ jobs:
             fi
           } >> "$DIAG" || true
           if [ -f smoke-output.txt ]; then cat smoke-output.txt >> "$DIAG" || true; fi
+          if [ -f verify-output.txt ]; then
+            echo "=== verify-arch output ===" >> "$DIAG"
+            cat verify-output.txt >> "$DIAG" || true
+          fi
+          if [ -n "$APP2" ]; then
+            echo "=== _up_ tree (node/runtime) ===" >> "$DIAG"
+            find "$APP2/Contents/Resources/_up_" -maxdepth 12 -name node 2>/dev/null | head -20 >> "$DIAG" || true
+            find "$APP2/Contents/Resources/_up_" -maxdepth 4 2>/dev/null | head -20 >> "$DIAG" || true
+          fi
           if [ -f SHA256SUMS-intel.txt ]; then
             echo "=== SHA256SUMS-intel.txt ===" >> "$DIAG"
             cat SHA256SUMS-intel.txt >> "$DIAG" || true
