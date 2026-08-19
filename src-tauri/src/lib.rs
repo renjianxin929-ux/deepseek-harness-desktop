@@ -3,7 +3,7 @@
 //! Responsibilities:
 //!   * resolve the Node / dsh runtime the user actually uses
 //!     (process PATH -> user's login shell -> common install locations)
-//!   * hard version guard: only DeepSeek Harness 0.1.0-rc.6 may be started
+//!   * hard version guard: only DeepSeek Harness 0.1.0-rc.7 may be started
 //!     (never a silent upgrade or downgrade)
 //!   * start `dsh web --host 127.0.0.1 --port 0` with cwd = user HOME and
 //!     DSH_HOME untouched (the existing ~/.dsh is reused as-is)
@@ -36,7 +36,7 @@ mod session_guard;
 mod usage;
 use appearance::AppearanceState;
 
-const REQUIRED_VERSION: &str = "0.1.0-rc.6";
+const REQUIRED_VERSION: &str = "0.1.0-rc.7";
 const DSH_PACKAGE: &str = "@deepseek-ai/dsh";
 const READY_TIMEOUT: Duration = Duration::from_secs(30);
 const PORT_LINE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -99,7 +99,7 @@ impl StatusPayload {
 pub enum Invocation {
     /// `node <bin_js> web ...`
     Direct { bin_js: PathBuf },
-    /// `node <npx> -y @deepseek-ai/dsh@0.1.0-rc.6 web ...`
+    /// `node <npx> -y @deepseek-ai/dsh@0.1.0-rc.7 web ...`
     Npx { npx: PathBuf },
 }
 
@@ -533,7 +533,7 @@ pub fn resolve_runtime(resource_dir: Option<&Path>) -> Result<Resolved, String> 
                     runtime: Runtime {
                         node,
                         invocation: Invocation::Direct { bin_js },
-                        source: "~/.npm/_npx cache (rc.6)".into(),
+                        source: "~/.npm/_npx cache (rc.7)".into(),
                     },
                     shell_path,
                 });
@@ -557,7 +557,7 @@ pub fn resolve_runtime(resource_dir: Option<&Path>) -> Result<Resolved, String> 
                         runtime: Runtime {
                             node,
                             invocation: Invocation::Direct { bin_js },
-                            source: "global npm root (rc.6)".into(),
+                            source: "global npm root (rc.7)".into(),
                         },
                         shell_path,
                     });
@@ -567,7 +567,7 @@ pub fn resolve_runtime(resource_dir: Option<&Path>) -> Result<Resolved, String> 
         }
     }
 
-    // 4) npx fallback pinned to rc.6
+    // 4) npx fallback pinned to rc.7
     let node = pick_node(&pool)?;
     let npx = find_bin(&pool, "npx")
         .map(|c| c.path.clone())
@@ -575,7 +575,7 @@ pub fn resolve_runtime(resource_dir: Option<&Path>) -> Result<Resolved, String> 
             let extra = if found_other.is_empty() {
                 String::new()
             } else {
-                format!("\nHarness found but not rc.6: {}", found_other.join("; "))
+                format!("\nHarness found but not rc.7: {}", found_other.join("; "))
             };
             format!(
                 "No npx available to bootstrap {DSH_PACKAGE}; PATH={}{extra}",
@@ -592,14 +592,14 @@ pub fn resolve_runtime(resource_dir: Option<&Path>) -> Result<Resolved, String> 
         runtime: Runtime {
             node,
             invocation: Invocation::Npx { npx },
-            source: "npx pinned @deepseek-ai/dsh@0.1.0-rc.6".into(),
+            source: "npx pinned @deepseek-ai/dsh@0.1.0-rc.7".into(),
         },
         shell_path,
     })
 }
 
 fn force_dsh_bin() -> Result<PathBuf, String> {
-    // used together with HD_FORCE_NODE; resolve a real rc.6 entry
+    // used together with HD_FORCE_NODE; resolve a real rc.7 entry
     for d in npx_cache_dsh_dirs() {
         if let Some(ver) = read_dsh_version(&d) {
             let bin_js = d.join("lib/bin.js");
@@ -608,7 +608,7 @@ fn force_dsh_bin() -> Result<PathBuf, String> {
             }
         }
     }
-    Err("HD_FORCE_NODE set but no rc.6 dsh entry found in ~/.npm/_npx".into())
+    Err("HD_FORCE_NODE set but no rc.7 dsh entry found in ~/.npm/_npx".into())
 }
 
 // ---------------------------------------------------------------------------
@@ -777,7 +777,7 @@ fn start_flow(app: &AppHandle) {
         }
     };
 
-    // Hard version guard: only 0.1.0-rc.6 may be started.
+    // Hard version guard: only 0.1.0-rc.7 may be started.
     let version = match probe_version(&resolved.runtime) {
         Ok(v) => v,
         Err(e) => {

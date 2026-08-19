@@ -414,7 +414,7 @@ mod tests {
         .unwrap();
         fs::write(
             root.join(format!("{id}/harness/node_modules/@deepseek-ai/dsh/package.json")),
-            r#"{"name":"@deepseek-ai/dsh","version":"0.1.0-rc.6"}"#,
+            r#"{"name":"@deepseek-ai/dsh","version":"0.1.0-rc.7"}"#,
         )
         .unwrap();
     }
@@ -477,13 +477,13 @@ mod tests {
         let root = std::env::temp_dir().join(format!("hd-rt-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         write_runtime_fixture(&root, "#!/bin/sh\necho v22.22.3\n");
-        write_manifest_with_checksums(&root, "0.1.0-rc.6", &fixture_node_sha(&root));
+        write_manifest_with_checksums(&root, "0.1.0-rc.7", &fixture_node_sha(&root));
 
         let br = resolve(&root).expect("resolve bundled runtime");
         assert!(br.node.is_file());
         assert!(br.bin_js.is_file());
         assert!(br.source.contains("22.22.3"));
-        assert!(br.source.contains("0.1.0-rc.6"));
+        assert!(br.source.contains("0.1.0-rc.7"));
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -501,7 +501,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("hd-rt-ver-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         write_runtime_fixture(&root, "#!/bin/sh\necho v22.22.3\n");
-        // package.json says 0.1.0-rc.6; the manifest demands a DIFFERENT version.
+        // package.json says 0.1.0-rc.7; the manifest demands a DIFFERENT version.
         write_manifest_with_checksums(&root, "9.9.9", &fixture_node_sha(&root));
         assert!(resolve(&root).is_err());
         let _ = fs::remove_dir_all(&root);
@@ -512,7 +512,7 @@ mod tests {
         let root = std::env::temp_dir().join(format!("hd-rt-corrupt-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         write_runtime_fixture(&root, "#!/bin/sh\necho v9.9.9\n"); // wrong version
-        write_manifest_with_checksums(&root, "0.1.0-rc.6", &fixture_node_sha(&root));
+        write_manifest_with_checksums(&root, "0.1.0-rc.7", &fixture_node_sha(&root));
         assert!(resolve(&root).is_err());
         let _ = fs::remove_dir_all(&root);
     }
@@ -523,7 +523,7 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         write_runtime_fixture(&root, "#!/bin/sh\necho v22.22.3\n");
         // Write a manifest with a deliberately WRONG node checksum.
-        write_manifest_with_checksums(&root, "0.1.0-rc.6", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
+        write_manifest_with_checksums(&root, "0.1.0-rc.7", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef");
         let err = resolve(&root).expect_err("integrity mismatch must fail");
         assert!(err.is_integrity(), "expected integrity error, got {err}");
         assert!(err.message().contains("integrity"));
@@ -545,7 +545,7 @@ mod tests {
         });
         let manifest = serde_json::json!({
             "schemaVersion": 1,
-            "harness": { "package": "@deepseek-ai/dsh", "version": "0.1.0-rc.6", "entry": "node_modules/@deepseek-ai/dsh/lib/bin.js" },
+            "harness": { "package": "@deepseek-ai/dsh", "version": "0.1.0-rc.7", "entry": "node_modules/@deepseek-ai/dsh/lib/bin.js" },
             "node": { "version": "22.22.3", "source": "x" },
             "targets": targets
         });

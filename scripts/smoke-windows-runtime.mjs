@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = resolve(fileURLToPath(new URL(".", import.meta.url)), "..");
 const TARGET = "windows-x64";
 const HARNESS_PACKAGE = "@deepseek-ai/dsh";
-const HARNESS_VERSION = "0.1.0-rc.6";
+const HARNESS_VERSION = "0.1.0-rc.7";
 
 function parseArgs(argv) {
   const args = { runtime: null };

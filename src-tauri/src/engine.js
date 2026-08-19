@@ -402,6 +402,87 @@
     return css;
   }
 
+  // COMPOSER INPUT TEXT READABILITY (V0.2 hotfix).
+  //
+  // REAL-DOM root cause (verified against bundled dsh 0.1.0-rc.7):
+  //   * the composer input is a `textarea` whose OWN text is intentionally
+  //     transparent (`color:#0000`); the visible text is painted by a sibling
+  //     `.uV2eYG_backdrop` layer (`color:var(--dsw-alias-label-primary)`),
+  //   * the glass material above puts `backdrop-filter:blur(12px)` on the
+  //     textarea, and the theme's `:focus` background paints over the textarea,
+  //     both of which wash out the backdrop text layer underneath → typed text
+  //     looks transparent/faded.
+  //
+  // This fix lifts the real text layer above the glass surfaces and pins it to
+  // a high-contrast, semibold foreground. It is structural (no hashed class
+  // names), degrades safely if the upstream composer changes, never touches the
+  // React tree, and does not alter composer geometry/background/alpha/rounding.
+  function composerTextFixCss() {
+    return (
+      // The visible-text layer (official backdrop, tagged at runtime) must paint
+      // above the glass textarea so the blur/focus-background can never wash it
+      // out. Light mode: near-black semibold, fully opaque.
+      "#root [data-hd-composer-text]{" +
+      "position:absolute;z-index:1;pointer-events:none;" +
+      "color:var(--dsw-alias-label-primary,#111111) !important;" +
+      "-webkit-text-fill-color:currentColor !important;" +
+      "font-weight:600 !important;" +
+      "opacity:1 !important;" +
+      "}" +
+      // Dark mode: same contract with a near-white foreground.
+      "body[data-ds-dark-theme] #root [data-hd-composer-text]{" +
+      "color:var(--dsw-alias-label-primary,#f5f6f8) !important;" +
+      "}" +
+      // Caret stays visible (official brand caret; never inherit the hidden
+      // text). The textarea's own glyphs remain transparent as upstream intends
+      // (the tagged layer above paints them).
+      "#root [contenteditable=\"true\"],#root textarea{" +
+      "caret-color:var(--dsw-alias-state-business-primary,#4d7cfe) !important;" +
+      "-webkit-text-fill-color:transparent !important;" +
+      "}" +
+      // Selection over the transparent textarea must remain readable in both
+      // modes (the visible layer above still shows the text).
+      "#root [contenteditable=\"true\"]::selection,#root textarea::selection{" +
+      "background:rgba(77,124,254,.24) !important;" +
+      "color:#111111 !important;-webkit-text-fill-color:#111111 !important;" +
+      "}" +
+      "body[data-ds-dark-theme] #root [contenteditable=\"true\"]::selection," +
+      "body[data-ds-dark-theme] #root textarea::selection{" +
+      "color:#f5f6f8 !important;-webkit-text-fill-color:#f5f6f8 !important;" +
+      "}"
+    );
+  }
+
+  // Tag the official visible-text layer (the backdrop sibling of the composer
+  // textarea) so the readability CSS above can target it without hashed classes.
+  // Structural + style-based detection only; no-op when the upstream composer
+  // does not use the transparent-textarea/backdrop pattern.
+  function markComposerTextLayer() {
+    try {
+      var ta = document.querySelector(
+        "#root textarea, #root [contenteditable=\"true\"]"
+      );
+      if (!ta || !ta.parentElement) return;
+      // The layer that actually paints the user's text: a sibling that is
+      // absolutely positioned, ignores pointer events, is not the input itself,
+      // and is not the hidden measuring mirror.
+      var kids = ta.parentElement.children;
+      for (var i = 0; i < kids.length; i++) {
+        var c = kids[i];
+        if (c === ta) continue;
+        if (c.getAttribute && c.getAttribute("data-hd-composer-text")) continue;
+        var s;
+        try { s = window.getComputedStyle(c); } catch (_) { continue; }
+        if (!s) continue;
+        if (s.position === "absolute" && s.pointerEvents === "none") {
+          if (s.visibility === "hidden") continue; // measuring mirror
+          try { c.setAttribute("data-hd-composer-text", "true"); } catch (_) {}
+          return;
+        }
+      }
+    } catch (_) { /* fail-safe: leave the composer untouched */ }
+  }
+
   // Slow cinematic background-only motion (scale drift + pan) on the media
   // wrapper. Never animates text/composer/dialogs. The engine injects this only
   // when motion is enabled and reduced-motion is off; the media query is a
@@ -478,6 +559,11 @@
           bf: (s.backdropFilter || s.webkitBackdropFilter || "").slice(0, 40),
           pos: s.position || "",
           z: s.zIndex || "auto",
+          color: s.color || "",
+          textFill: s.webkitTextFillColor || "",
+          opacity: s.opacity || "",
+          fontWeight: s.fontWeight || "",
+          caretColor: s.caretColor || "",
         };
       }
       function tag(sel) {
@@ -585,6 +671,7 @@
     removeStyle("hd-scrim-style");
     removeStyle("hd-button-style");
     removeStyle("hd-ambient-style");
+    removeStyle("hd-composer-text");
     removeBackdrop();
     removeButton();
   }
@@ -661,6 +748,13 @@
     } else {
       removeStyle(IDS.components);
     }
+
+    // Composer input text readability (V0.2 hotfix): tag the real text layer
+    // and pin it above the glass surfaces. Runs after components so the fix CSS
+    // always wins, and re-tags on every apply (React re-renders the composer).
+    markComposerTextLayer();
+    ensureStyle("hd-composer-text").textContent = composerTextFixCss();
+    watchComposerText();
 
     // Theme motion (ambient drift) + engine cinematic background motion.
     var motionEnabled = cfg.motionEnabled !== false;
@@ -863,6 +957,29 @@
   function stop() {
     if (bootTimer) { clearInterval(bootTimer); bootTimer = null; }
     if (observer) { observer.disconnect(); observer = null; }
+    if (composerObserver) { composerObserver.disconnect(); composerObserver = null; }
+  }
+
+  // React re-renders the composer on input, so the tagged text layer can be
+  // replaced at any moment. A tiny, low-frequency observer re-tags it so the
+  // readability CSS keeps applying during IME composition and typing without
+  // touching React's tree or any input logic.
+  var composerObserver = null;
+  function watchComposerText() {
+    if (composerObserver) return;
+    try {
+      if (typeof MutationObserver === "undefined") return;
+      composerObserver = new MutationObserver(function () {
+        markComposerTextLayer();
+      });
+      var target = document.getElementById("root") || document.documentElement;
+      composerObserver.observe(target, {
+        childList: true,
+        subtree: true,
+        attributes: false,
+        characterData: false,
+      });
+    } catch (_) { composerObserver = null; }
   }
 
   function boot() {
@@ -908,6 +1025,8 @@
     shouldApplyMotion: shouldApplyMotion,
     glassMaterialCss: glassMaterialCss,
     cinematicCss: cinematicCss,
+    composerTextFixCss: composerTextFixCss,
+    markComposerTextLayer: markComposerTextLayer,
   };
 
   window.__HD_STATE__ = window.__HD_STATE__ || null;

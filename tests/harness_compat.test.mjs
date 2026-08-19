@@ -1,9 +1,9 @@
-// Compatibility probe against the REAL bundled rc.6 Harness source. Detects
+// Compatibility probe against the REAL bundled rc.7 Harness source. Detects
 // selector/token drift that would silently break the appearance layer (the
 // engine relies on #root + the --dsw-alias-* / --dsw-specific-* tokens, not on
 // hashed component classes). Skips gracefully when the bundled runtime isn't
 // materialized (it is gitignored).
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert";
@@ -14,9 +14,25 @@ const harnessRoot = join(root, "runtime", "darwin-arm64", "harness", "node_modul
 const indexHtml = join(harnessRoot, "dsh-web-frontend", "dist", "index.html");
 const themeCss = join(harnessRoot, "dsh-client-ui-theme", "lib", "styles", "design-platform.css");
 const layoutJs = join(harnessRoot, "dsh-client-ui-layout", "lib", "client.js");
-const frontendJs = join(harnessRoot, "dsh-web-frontend", "dist", "assets", "index-Dqw48FrP.js");
+const conversationJs = join(harnessRoot, "dsh-client-ui-conversation", "lib", "client.js");
 
-if (!existsSync(indexHtml) || !existsSync(themeCss) || !existsSync(layoutJs) || !existsSync(frontendJs)) {
+// The frontend asset filenames carry content hashes that change between
+// releases; discover them instead of pinning a hash.
+function findAsset(namePrefix, dir) {
+  const assetsDir = join(dir, "assets");
+  if (!existsSync(assetsDir)) return null;
+  const hit = readdirSync(assetsDir).find((f) => f.startsWith(namePrefix) && f.endsWith(".js"));
+  return hit ? join(assetsDir, hit) : null;
+}
+const frontendJs = findAsset("index-", join(harnessRoot, "dsh-web-frontend", "dist"));
+
+if (
+  !existsSync(indexHtml) ||
+  !existsSync(themeCss) ||
+  !existsSync(layoutJs) ||
+  !frontendJs ||
+  !existsSync(conversationJs)
+) {
   console.log("harness_compat.test.mjs: skipped (bundled runtime not materialized)");
   process.exit(0);
 }
@@ -25,6 +41,7 @@ const html = readFileSync(indexHtml, "utf8");
 const theme = readFileSync(themeCss, "utf8");
 const layout = readFileSync(layoutJs, "utf8");
 const frontend = readFileSync(frontendJs, "utf8");
+const conversation = readFileSync(conversationJs, "utf8");
 
 // 1. #root mount point (the engine's ROOT_SELECTOR + boot gate).
 assert.ok(html.includes('id="root"'), "#root mount must exist in Harness index.html");
@@ -61,6 +78,27 @@ assert.ok(
 assert.ok(
   frontend.includes("contentEditable") || frontend.includes("textarea"),
   "composer must be a real contenteditable/textarea surface"
+);
+
+// 5. Composer input text readability contract (V0.2 hotfix). The official
+//    composer paints the user's text on a separate absolutely-positioned,
+//    pointer-events:none layer (the "backdrop") while the textarea's own text
+//    is transparent (`color:#0000`). The engine's fix targets exactly that
+//    layer; if upstream stops using this pattern the fix degrades to a no-op
+//    and the input text reverts to upstream styling (still readable).
+assert.ok(
+  conversation.includes("color:#0000"),
+  "composer textarea must keep its transparent own-text (backdrop pattern)"
+);
+assert.ok(
+  conversation.includes("pointer-events:none") &&
+    conversation.includes("position:absolute") &&
+    conversation.includes("label-primary"),
+  "composer backdrop text layer must exist (absolute, pointer-events:none, label-primary)"
+);
+assert.ok(
+  conversation.includes("caret-color") || conversation.includes("caretColor"),
+  "composer caret must be explicitly colored (visible against glass)"
 );
 
 console.log("harness_compat.test.mjs: all assertions passed");

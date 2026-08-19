@@ -72,7 +72,7 @@ path, so its existing Unix assumptions are out of scope for a rewrite.
 
 ### 3.2 Piece 1 — bundled runtime
 
-- Pinned Harness: `@deepseek-ai/dsh@0.1.0-rc.6` (unchanged from V0.1; never a
+- Pinned Harness: `@deepseek-ai/dsh@0.1.0-rc.7` (unchanged from V0.1; never a
   silent upgrade).
 - Pinned Node: **v22.22.3** (exact), chosen from the known-good V0.1
   environment (the machine currently runs Node v22.22.3). Source: official
@@ -88,7 +88,7 @@ path, so its existing Unix assumptions are out of scope for a rewrite.
     README.md
     darwin-arm64/
       node/bin/node          # pinned Node executable (materialized)
-      harness/               # pinned @deepseek-ai/dsh@0.1.0-rc.6 + full dep closure (materialized)
+      harness/               # pinned @deepseek-ai/dsh@0.1.0-rc.7 + full dep closure (materialized)
     darwin-x64/              # structurally supported, NOT materialized
     windows-x64/             # structurally supported, NOT materialized
   ```
@@ -104,7 +104,7 @@ path, so its existing Unix assumptions are out of scope for a rewrite.
      labeled "system (dev-only)". This preserves V0.1 regression coverage
      without reintroducing a silent production fallback.
 - Build-time network is used ONLY for exact pinned artifacts (Node tarball +
-  `npm install @deepseek-ai/dsh@0.1.0-rc.6` into a staging dir). Startup performs
+  `npm install @deepseek-ai/dsh@0.1.0-rc.7` into a staging dir). Startup performs
   NO npm/npx/internet bootstrap.
 - `tauri.conf.json` `bundle.resources` includes `../runtime` so the production
   `.app` embeds the runtime.
@@ -185,7 +185,7 @@ touched. No `pkill`/`killall`/`taskkill /IM`.
 ## 5. Bundled runtime contract
 
 1. Runtime Node is bundled/managed by Desktop.
-2. Harness version pinned to `0.1.0-rc.6`.
+2. Harness version pinned to `0.1.0-rc.7`.
 3. Production startup performs no runtime npm/npx internet bootstrap.
 4. Production never silently falls back to arbitrary system Node/Harness.
 5. Missing/corrupt bundled runtime → clear fail-closed error.

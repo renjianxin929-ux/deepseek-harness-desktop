@@ -8,7 +8,7 @@ A native **macOS (Apple Silicon) + Windows (x64)** desktop shell for [DeepSeek H
 
 > **Keep Harness official. Make it yours.**
 
-DeepSeek Harness Desktop launches a self-contained bundled runtime — pinned **Node v22.22.3** + pinned **`@deepseek-ai/dsh@0.1.0-rc.6`** — locally (`127.0.0.1`, dynamic port) and wraps the **official** DeepSeek Harness Web UI in a native window — without modifying Harness Core. On top of that, it adds a *surface-layer* appearance system: themes, a DIY starter theme, local image/MP4 backgrounds, and optional lightweight motion.
+DeepSeek Harness Desktop launches a self-contained bundled runtime — pinned **Node v22.22.3** + pinned **`@deepseek-ai/dsh@0.1.0-rc.7`** — locally (`127.0.0.1`, dynamic port) and wraps the **official** DeepSeek Harness Web UI in a native window — without modifying Harness Core. On top of that, it adds a *surface-layer* appearance system: themes, a DIY starter theme, local image/MP4 backgrounds, and optional lightweight motion.
 
 > **No Node setup. macOS + Windows. Clear Glass, local wallpapers, and a more reliable Harness desktop experience.**
 
@@ -20,7 +20,7 @@ DeepSeek Harness Desktop launches a self-contained bundled runtime — pinned **
 
 DeepSeek Harness Desktop is an **independent, unofficial** project. It is not affiliated with, endorsed by, or associated with DeepSeek. The DeepSeek Harness software, its Web UI, and the DeepSeek whale mark remain the property of their respective owners.
 
-- This project **reuses** the official Harness Web UI over its local HTTP server and does not fork or modify Harness Core. Since V0.2, DeepSeek Harness Desktop **distributes a pinned, unmodified `@deepseek-ai/dsh@0.1.0-rc.6` runtime plus a pinned Node binary** (see [Bundled runtime](#bundled-runtime)) — see `runtime/NOTICE.md` for the bundling statement and attribution.
+- This project **reuses** the official Harness Web UI over its local HTTP server and does not fork or modify Harness Core. Since V0.2, DeepSeek Harness Desktop **distributes a pinned, unmodified `@deepseek-ai/dsh@0.1.0-rc.7` runtime plus a pinned Node binary** (see [Bundled runtime](#bundled-runtime)) — see `runtime/NOTICE.md` for the bundling statement and attribution.
 - The Ocean showcase uses the official DeepSeek whale silhouette (unaltered) as a faint decorative element.
 - MIT-licensed code in this repository is this project's own; upstream Harness (MIT) and Node.js (MIT-style) are redistributed under their own licenses with attribution preserved in `runtime/`.
 
@@ -33,7 +33,7 @@ DeepSeek Harness already ships a capable Web UI (`dsh web`). DeepSeek Harness De
 ## Features
 
 - **Native macOS + Windows window** around the official Harness Web UI (local-only serving, dynamic port, readiness handling, clean shutdown, child-process cleanup).
-- **Self-contained runtime** — bundled pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.6`; no system Node/npm/npx/dsh and no runtime internet bootstrap. See [Bundled runtime](#bundled-runtime).
+- **Self-contained runtime** — bundled pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.7`; no system Node/npm/npx/dsh and no runtime internet bootstrap. See [Bundled runtime](#bundled-runtime).
 - **Appearance system** — surface-layer themes that sit *on top of* the official UI:
   - **Official** — the untouched Harness appearance.
   - **Ocean** — a polished, restrained ocean-inspired showcase.
@@ -82,7 +82,7 @@ DeepSeek Harness already ships a capable Web UI (`dsh web`). DeepSeek Harness De
 **For end users (packaged V0.2):**
 
 - **macOS Apple Silicon** (11+), or **Windows x64**
-- **No system Node.js, npm, npx, or `dsh` install is required** — V0.2 ships a self-contained bundled runtime (pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.6`). See [Bundled runtime](#bundled-runtime).
+- **No system Node.js, npm, npx, or `dsh` install is required** — V0.2 ships a self-contained bundled runtime (pinned Node v22.22.3 + pinned `@deepseek-ai/dsh@0.1.0-rc.7`). See [Bundled runtime](#bundled-runtime).
 - **Python is NOT required**
 
 > V0.1 required a system Node/npm/dsh install and included an experimental automatic Harness bootstrap path. V0.2 removes that dependency for production use: the app uses its own bundled runtime and fails clearly (rather than silently falling back) if the bundled runtime is missing or corrupt.
@@ -96,10 +96,10 @@ DeepSeek Harness already ships a capable Web UI (`dsh web`). DeepSeek Harness De
 DeepSeek Harness Desktop V0.2 bundles a self-contained runtime so it does not depend on system `node`/`npm`/`npx`/`dsh`:
 
 ```
-Harness Desktop → bundled Node v22.22.3 → pinned @deepseek-ai/dsh@0.1.0-rc.6 → dsh web → 127.0.0.1:<dynamic>
+Harness Desktop → bundled Node v22.22.3 → pinned @deepseek-ai/dsh@0.1.0-rc.7 → dsh web → 127.0.0.1:<dynamic>
 ```
 
-- Pinned Harness: `@deepseek-ai/dsh@0.1.0-rc.6` (never a silent upgrade/downgrade).
+- Pinned Harness: `@deepseek-ai/dsh@0.1.0-rc.7` (never a silent upgrade/downgrade).
 - Pinned Node: `v22.22.3` (matches the known-good V0.1 environment).
 - **Integrity:** at startup, SHA-256 verifies the bundled Node executable and the Harness entrypoint before executing them. (The full `node_modules` dependency closure is pinned by the materializer's committed lockfile, but only the Node executable and Harness entrypoint are SHA-256 verified at launch.)
 - Production startup performs **no** npm/npx/internet bootstrap and never silently falls back to arbitrary system Node/Harness; a missing/corrupt runtime fails closed with a clear error (integrity is verified **before** bundled code executes, and an integrity failure never falls back to the system runtime).
@@ -159,7 +159,7 @@ npm run tauri build                      # production Tauri build
 
 ## Usage
 
-1. Launch **DeepSeek Harness Desktop**. The loading screen resolves the bundled runtime, pins it to Harness `0.1.0-rc.6`, starts `dsh web --host 127.0.0.1 --port 0`, waits for readiness, then opens the official Harness UI.
+1. Launch **DeepSeek Harness Desktop**. The loading screen resolves your runtime, pins it to Harness `0.1.0-rc.7`, starts `dsh web --host 127.0.0.1 --port 0`, waits for readiness, then opens the official Harness UI.
 2. To change the look, either:
    - click the small **gear button** in the bottom-right corner of the Harness window, or
    - choose **DeepSeek Harness Desktop ▸ Appearance…** from the menu bar (`⌘,` on macOS).
@@ -170,7 +170,7 @@ The Appearance window also has a **Language / 语言** selector with three optio
 
 > **Windows note (known V0.2 limitation).** On some Windows launches, the bundled Node child process may leave a visible console/CMD window open while Harness is running. This does not prevent Harness from working and is tracked as a polish item for V0.2.1.
 
-> **Note on `@deepseek-ai/dsh` version pinning.** DeepSeek Harness Desktop refuses to start any Harness version other than `0.1.0-rc.6` (no silent upgrade or downgrade). This keeps the desktop shell honest about what it was validated against. See [Compatibility & fallback](#compatibility--fallback).
+> **Note on `@deepseek-ai/dsh` version pinning.** DeepSeek Harness Desktop refuses to start any Harness version other than `0.1.0-rc.7` (no silent upgrade or downgrade). This keeps the desktop shell honest about what it was validated against. See [Compatibility & fallback](#compatibility--fallback).
 
 ---
 
@@ -297,7 +297,7 @@ DeepSeek Harness Desktop 是 [DeepSeek Harness](https://github.com/deepseek-ai/d
 
 > **保持 Harness 原貌，把它变成你的。**
 
-DeepSeek Harness Desktop 会在本地启动一个**自包含的内置运行时**——锁定 **Node v22.22.3** + 锁定 **`@deepseek-ai/dsh@0.1.0-rc.6`**（`127.0.0.1`，动态端口），并在原生窗口中包裹**官方** DeepSeek Harness Web UI——不修改 Harness 核心。在此基础上，它叠加了一层*表层*外观系统：主题、DIY 入门主题、本地图片/MP4 背景，以及可选的轻量动效。
+DeepSeek Harness Desktop 会在本地启动一个**自包含的内置运行时**——锁定 **Node v22.22.3** + 锁定 **`@deepseek-ai/dsh@0.1.0-rc.7`**（`127.0.0.1`，动态端口），并在原生窗口中包裹**官方** DeepSeek Harness Web UI——不修改 Harness 核心。在此基础上，它叠加了一层*表层*外观系统：主题、DIY 入门主题、本地图片/MP4 背景，以及可选的轻量动效。
 
 > **免装 Node。macOS + Windows。Clear Glass 清透玻璃、本地壁纸，以及更可靠的 Harness 桌面体验。**
 
@@ -305,7 +305,7 @@ DeepSeek Harness Desktop 会在本地启动一个**自包含的内置运行时**
 
 DeepSeek Harness Desktop 是一个**独立的、非官方**项目。它与 DeepSeek 无隶属、背书或关联关系。DeepSeek Harness 软件、其 Web UI 以及 DeepSeek 鲸鱼标志均归其各自所有者所有。
 
-- 本项目**复用**官方 Harness Web UI（经由其本地 HTTP 服务），并不 fork、也不修改 Harness 核心。自 V0.2 起，DeepSeek Harness Desktop **分发锁定版本的、未经修改的 `@deepseek-ai/dsh@0.1.0-rc.6` 运行时以及锁定版本的 Node 二进制**（见[内置运行时](#内置运行时)）——打包声明与归属见 `runtime/NOTICE.md`。
+- 本项目**复用**官方 Harness Web UI（经由其本地 HTTP 服务），并不 fork、也不修改 Harness 核心。自 V0.2 起，DeepSeek Harness Desktop **分发锁定版本的、未经修改的 `@deepseek-ai/dsh@0.1.0-rc.7` 运行时以及锁定版本的 Node 二进制**（见[内置运行时](#内置运行时)）——打包声明与归属见 `runtime/NOTICE.md`。
 - Ocean 主题将官方 DeepSeek 鲸鱼剪影（未改动）作为淡色装饰元素使用。
 - 本仓库中的 MIT 许可代码属于本项目自身；上游 Harness（MIT）与 Node.js（MIT 风格）按其自身许可证再分发，归属信息保留在 `runtime/` 中。
 
@@ -316,7 +316,7 @@ DeepSeek Harness 已自带一个功能完善的 Web UI（`dsh web`）。DeepSeek
 ### 功能特性
 
 - **原生 macOS + Windows 窗口**——包裹官方 Harness Web UI（仅本地服务、动态端口、就绪处理、干净退出、子进程清理）。
-- **自包含运行时**——内置锁定 Node v22.22.3 + 锁定 `@deepseek-ai/dsh@0.1.0-rc.6`；无需系统 Node/npm/npx/dsh，也无需运行时联网引导。见[内置运行时](#内置运行时)。
+- **自包含运行时**——内置锁定 Node v22.22.3 + 锁定 `@deepseek-ai/dsh@0.1.0-rc.7`；无需系统 Node/npm/npx/dsh，也无需运行时联网引导。见[内置运行时](#内置运行时)。
 - **外观系统**——叠加在官方 UI *之上*的表层主题：
   - **Official（官方）**——未改动的 Harness 外观。
   - **Ocean（海洋）**——一套精致、克制的海洋风格展示。
@@ -361,7 +361,7 @@ DeepSeek Harness 已自带一个功能完善的 Web UI（`dsh web`）。DeepSeek
 **面向最终用户（V0.2 打包版）：**
 
 - **macOS Apple Silicon**（11+），或 **Windows x64**
-- **无需安装系统 Node.js、npm、npx 或 `dsh`** —— V0.2 自带自包含内置运行时（锁定 Node v22.22.3 + 锁定 `@deepseek-ai/dsh@0.1.0-rc.6`）。见[内置运行时](#内置运行时)。
+- **无需安装系统 Node.js、npm、npx 或 `dsh`** —— V0.2 自带自包含内置运行时（锁定 Node v22.22.3 + 锁定 `@deepseek-ai/dsh@0.1.0-rc.7`）。见[内置运行时](#内置运行时)。
 - **不需要 Python**
 
 > V0.1 需要系统 Node/npm/dsh 安装，并包含一条实验性的自动 Harness 引导路径。V0.2 在生产使用中去掉了这一依赖：应用使用自己的内置运行时，若内置运行时缺失或损坏会清晰报错（而非静默回退）。
@@ -375,10 +375,10 @@ DeepSeek Harness 已自带一个功能完善的 Web UI（`dsh web`）。DeepSeek
 DeepSeek Harness Desktop V0.2 内置了一个自包含运行时，因此不依赖系统 `node`/`npm`/`npx`/`dsh`：
 
 ```
-Harness Desktop → 内置 Node v22.22.3 → 锁定 @deepseek-ai/dsh@0.1.0-rc.6 → dsh web → 127.0.0.1:<动态端口>
+Harness Desktop → 内置 Node v22.22.3 → 锁定 @deepseek-ai/dsh@0.1.0-rc.7 → dsh web → 127.0.0.1:<动态端口>
 ```
 
-- 锁定 Harness：`@deepseek-ai/dsh@0.1.0-rc.6`（绝不静默升级/降级）。
+- 锁定 Harness：`@deepseek-ai/dsh@0.1.0-rc.7`（绝不静默升级/降级）。
 - 锁定 Node：`v22.22.3`（与 V0.1 已验证环境一致；完整性见 `runtime/manifest.json` 校验和，启动时校验）。
 - 生产启动**不做** npm/npx/联网引导，也绝不静默回退到任意的系统 Node/Harness；内置运行时缺失或损坏会清晰报错并关闭（完整性在执行内置代码**之前**校验，完整性失败绝不回退到系统运行时）。
 - Harness 仍仅绑定回环地址（`127.0.0.1`，动态端口）；现有 `~/.dsh` 会话语义保持不变。
@@ -426,7 +426,7 @@ npm run tauri build                      # 生产 Tauri 构建
 
 ### 使用
 
-1. 启动 **DeepSeek Harness Desktop**。加载页会解析内置运行时，将其锁定到 Harness `0.1.0-rc.6`，启动 `dsh web --host 127.0.0.1 --port 0`，等待就绪，然后打开官方 Harness UI。
+1. 启动 **DeepSeek Harness Desktop**。加载页会解析你的运行时，将其锁定到 Harness `0.1.0-rc.7`，启动 `dsh web --host 127.0.0.1 --port 0`，等待就绪，然后打开官方 Harness UI。
 2. 要更改外观，可以：
    - 点击 Harness 窗口右下角的小**齿轮按钮**，或
    - 从菜单栏选择 **DeepSeek Harness Desktop ▸ Appearance…**（macOS 上为 `⌘,`）。
@@ -437,7 +437,7 @@ npm run tauri build                      # 生产 Tauri 构建
 
 > **Windows 说明（V0.2 已知限制）。** 在部分 Windows 启动场景下，内置 Node 子进程可能会在 Harness 运行期间保持一个可见的控制台/CMD 窗口。这不会妨碍 Harness 正常工作，已作为 V0.2.1 的打磨项跟踪。
 
-> **关于 `@deepseek-ai/dsh` 版本锁定的说明。** DeepSeek Harness Desktop 拒绝启动 `0.1.0-rc.6` 以外的任何 Harness 版本（不会静默升级或降级）。这让桌面外壳如实说明它针对哪个版本做了验证。见[兼容性与回退](#compatibility--fallback)。
+> **关于 `@deepseek-ai/dsh` 版本锁定的说明。** DeepSeek Harness Desktop 拒绝启动 `0.1.0-rc.7` 以外的任何 Harness 版本（不会静默升级或降级）。这让桌面外壳如实说明它针对哪个版本做了验证。见[兼容性与回退](#compatibility--fallback)。
 
 ### DIY 主题
 
