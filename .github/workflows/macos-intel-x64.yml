@@ -1,0 +1,157 @@
+# macOS Intel x64 build slice (V0.2 / rc.7).
+#
+# Builds the SAME product (rc.7 Harness, Deep Glass, wallpaper, MP4, appearance,
+# sessions, bundled Node/runtime — no feature fork) as a native x86_64 .app on a
+# REAL GitHub-hosted Intel runner, for direct testing on an Intel Mac (target:
+# MacBook Air 13" 2017, macOS 12.7.6).
+#
+# This is a human-test artifact, NOT a public release: no GitHub Release, no
+# tag, no modification of existing releases/downloads.
+name: macOS Intel x64 Build (rc.7)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - ci/macos-intel-x64
+      - release/macos-intel-x64
+
+permissions:
+  contents: read
+
+jobs:
+  macos-intel-x64:
+    name: macOS Intel x64 (rc.7)
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── Real-runner architecture gate (never trust labels alone) ────────────
+      - name: Verify Intel runner architecture
+        run: |
+          set -euxo pipefail
+          uname_m="$(uname -m)"
+          arch_out="$(arch)"
+          node_arch="$(node -p 'process.arch')"
+          arm_optional="$(sysctl -n hw.optional.arm64 2>/dev/null || echo 'n/a')"
+          cpu="$(sysctl -n machdep.cpu.brand_string)"
+          echo "UNAME_M=$uname_m"
+          echo "ARCH=$arch_out"
+          echo "NODE_ARCH=$node_arch"
+          echo "HW_OPTIONAL_ARM64=$arm_optional"
+          echo "CPU=$cpu"
+          # Gates: uname -m must be x86_64 and node must be x64. (macOS prints
+          # i386 for bare `arch` on x64 hosts; the real gates are uname/node.)
+          if [ "$uname_m" != "x86_64" ]; then
+            echo "::error::runner is not Intel x86_64 (uname -m=$uname_m)"
+            exit 1
+          fi
+          if [ "$node_arch" != "x64" ]; then
+            echo "::error::node arch is not x64 ($node_arch)"
+            exit 1
+          fi
+          echo "RUNNER_ARCH=X64"
+
+      - name: Setup Node 22.22.3
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.3"
+
+      - name: Install frontend dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Engine tests (engine, engine-apply, guard)
+        run: |
+          npm run test:engine
+          npm run test:engine-apply
+          npm run test:guard
+
+      # ── Native x64 runtime materialization (never copied from Apple Silicon) ─
+      - name: Materialize darwin-x64 runtime (native Intel)
+        run: node scripts/materialize-runtime.mjs --target darwin-x64
+
+      - name: Verify runtime manifest + native x64 node binary
+        run: |
+          node -e '
+            const m = require("./runtime/manifest.json");
+            const assert = require("node:assert");
+            assert.strictEqual(m.harness.package, "@deepseek-ai/dsh");
+            assert.strictEqual(m.harness.version, "0.1.0-rc.7");
+            assert.strictEqual(m.node.version, "22.22.3");
+            assert.ok(m.targets["darwin-x64"].nodeSha256, "darwin-x64 node checksum missing");
+            assert.ok(m.targets["darwin-x64"].harnessEntrySha256, "darwin-x64 harness entry checksum missing");
+            console.log("MANIFEST_OK harness=" + m.harness.version + " node=" + m.node.version + " target=darwin-x64");
+          '
+          file runtime/darwin-x64/node/bin/node
+          file runtime/darwin-x64/node/bin/node | grep -q "x86_64" && echo "BUNDLED_NODE_ARCH_X86_64=OK"
+
+      - name: Rust toolchain (stable + x86_64-apple-darwin)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Cargo test
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Cargo clippy (warnings as errors)
+        working-directory: src-tauri
+        run: cargo clippy -- -D warnings
+
+      - name: Harness compatibility probe (real rc.7 closure)
+        run: npm run test:harness-compat
+
+      - name: Build frontend
+        run: npm run build:frontend
+
+      # ── Tauri x86_64 release build (minimumSystemVersion stays 11.0) ────────
+      - name: Build Tauri x86_64 release (.app)
+        run: npx tauri build --target x86_64-apple-darwin --bundles app
+
+      - name: Verify packaged app binary architecture
+        run: |
+          APP="$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)"
+          BIN="$(find "$APP/Contents/MacOS" -maxdepth 1 -type f | head -1)"
+          echo "APP=$APP"
+          echo "BIN=$BIN"
+          file "$BIN"
+          file "$BIN" | grep -q "x86_64" && echo "TAURI_BINARY_ARCH_X86_64=OK"
+          file "$APP/Contents/Resources/runtime/darwin-x64/node/bin/node" | grep -q "x86_64" && echo "BUNDLED_NODE_ARCH_X86_64=OK"
+          echo "APP_PATH=$APP" >> "$GITHUB_ENV"
+
+      # ── Packaged-app backend smoke (isolated HOME, no system node) ──────────
+      - name: Packaged app backend smoke (isolated HOME)
+        run: node scripts/smoke-macos-app.mjs "$APP_PATH"
+
+      # ── Human-test artifact: zip + SHA256SUMS ───────────────────────────────
+      - name: Package x64 zip + SHA256SUMS
+        run: |
+          ZIP="DeepSeek-Harness-Desktop-v0.2-rc7-macos-intel-x64.zip"
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP"
+          shasum -a 256 "$ZIP" | tee SHA256SUMS-intel.txt
+          ZIP_SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
+          ZIP_SIZE="$(stat -f%z "$ZIP")"
+          echo "INTEL_ZIP_SHA256=$ZIP_SHA"
+          echo "INTEL_ZIP_SIZE_BYTES=$ZIP_SIZE"
+          echo "INTEL_ZIP_SHA256=$ZIP_SHA" >> "$GITHUB_STEP_SUMMARY"
+          echo "INTEL_ZIP_SIZE_BYTES=$ZIP_SIZE" >> "$GITHUB_STEP_SUMMARY"
+          echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Upload x64 zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DeepSeek-Harness-Desktop-v0.2-rc7-macos-intel-x64.zip
+          path: DeepSeek-Harness-Desktop-v0.2-rc7-macos-intel-x64.zip
+          if-no-files-found: error
+
+      - name: Upload SHA256SUMS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SHA256SUMS-intel.txt
+          path: SHA256SUMS-intel.txt
+          if-no-files-found: error

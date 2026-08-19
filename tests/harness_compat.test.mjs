@@ -9,7 +9,20 @@ import { dirname, join } from "node:path";
 import assert from "node:assert";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const harnessRoot = join(root, "runtime", "darwin-arm64", "harness", "node_modules", "@deepseek-ai");
+
+// Pick the materialized runtime target dir for the CURRENT host (darwin-arm64
+// on Apple Silicon, darwin-x64 on Intel macOS, windows-x64 on Windows) so the
+// probe always runs against the real closure whenever a runtime is
+// materialized, and skips gracefully otherwise.
+function hostRuntimeTarget() {
+  if (process.platform === "darwin") return process.arch === "arm64" ? "darwin-arm64" : "darwin-x64";
+  if (process.platform === "win32") return "windows-x64";
+  return null;
+}
+const runtimeTarget = hostRuntimeTarget();
+const harnessRoot = runtimeTarget
+  ? join(root, "runtime", runtimeTarget, "harness", "node_modules", "@deepseek-ai")
+  : join(root, "runtime", "__none__", "harness", "node_modules", "@deepseek-ai");
 
 const indexHtml = join(harnessRoot, "dsh-web-frontend", "dist", "index.html");
 const themeCss = join(harnessRoot, "dsh-client-ui-theme", "lib", "styles", "design-platform.css");
