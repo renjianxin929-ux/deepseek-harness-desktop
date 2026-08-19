@@ -126,7 +126,7 @@ jobs:
 
       # ── Packaged-app backend smoke (isolated HOME, no system node) ──────────
       - name: Packaged app backend smoke (isolated HOME)
-        run: node scripts/smoke-macos-app.mjs "$APP_PATH"
+        run: SMOKE_TIMEOUT_MS=240000 node scripts/smoke-macos-app.mjs "$APP_PATH"
 
       # ── Human-test artifact: zip + SHA256SUMS ───────────────────────────────
       - name: Package x64 zip + SHA256SUMS

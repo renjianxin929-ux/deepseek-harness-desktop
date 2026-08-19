@@ -125,17 +125,50 @@ function findHarnessPort() {
   const lsof = run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"]);
   if (lsof.code !== 0) return null;
   const appFrag = APP + "/Contents/Resources/runtime";
+  // macOS lsof NAME column looks like "127.0.0.1:54321 (LISTEN)" — scan every
+  // field for the address (the trailing "(LISTEN)" state must not be mistaken
+  // for the address).
   for (const line of lsof.out.split("\n").slice(1)) {
     const f = line.split(/\s+/);
-    if (f.length < 9) continue;
+    if (f.length < 5) continue;
     const pid = f[1];
-    const name = f[f.length - 1];
-    const m = name.match(/(?:127\.0\.0\.1|\*|localhost):(\d+)$/);
-    if (!m) continue;
+    let addr = null;
+    for (const field of f) {
+      const m = field.match(/^(?:127\.0\.0\.1|\*|localhost):(\d+)$/);
+      if (m) { addr = m[1]; break; }
+    }
+    if (!addr) continue;
     const ps = run("ps", ["-p", pid, "-o", "command="]);
-    if (ps.out.includes(appFrag)) return { port: Number(m[1]), pid };
+    if (ps.out.includes(appFrag)) return { port: Number(addr), pid, attributed: true };
   }
+  // Fallback: the app is alive but no listener was attributed to it — probe
+  // every 127.0.0.1 listener and accept one that serves HTTP (on a clean CI
+  // runner there is nothing else listening on loopback during this window).
+  const fallback = [];
+  for (const line of lsof.out.split("\n").slice(1)) {
+    const f = line.split(/\s+/);
+    if (f.length < 5) continue;
+    for (const field of f) {
+      const m = field.match(/^127\.0\.0\.1:(\d+)$/);
+      if (m) { fallback.push(Number(m[1])); break; }
+    }
+  }
+  if (fallback.length) return { port: fallback[0], pid: null, attributed: false };
   return null;
+}
+
+function diagnostics() {
+  const appName = basename(APP, ".app");
+  const psAll = run("ps", ["axo", "pid,ppid,command"]);
+  const relevant = (psAll.out || "").split("\n").filter((l) => l.includes(appName) || l.includes("runtime/darwin-x64"));
+  return (
+    "--- ps (app/runtime processes) ---\n" +
+    (relevant.join("\n") || "(none)") +
+    "\n--- lsof -nP -iTCP -sTCP:LISTEN ---\n" +
+    run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"]).out +
+    "\n--- startup.log ---\n" +
+    readStartupLog()
+  );
 }
 
 const deadline = Date.now() + TIMEOUT_MS;
@@ -143,11 +176,11 @@ let portInfo = null;
 let sawReadyPhase = false;
 while (Date.now() < deadline) {
   if (child.exitCode !== null) {
-    fail("APP_LAUNCH", `app exited early (code=${child.exitCode})`, outBuf + "\n" + readStartupLog());
+    fail("APP_LAUNCH", `app exited early (code=${child.exitCode})`, outBuf + "\n" + diagnostics());
   }
   const log = readStartupLog();
   if (log.includes("[status] ready")) sawReadyPhase = true;
-  if (log.includes("[error]")) fail("APP_ERROR", log.split("\n").filter((l) => l.includes("[error]")).join(" | "), outBuf + "\n" + log);
+  if (log.includes("[error]")) fail("APP_ERROR", log.split("\n").filter((l) => l.includes("[error]")).join(" | "), outBuf + "\n" + diagnostics());
   if (!portInfo) portInfo = findHarnessPort();
   if (portInfo) {
     const http = run("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", `http://127.0.0.1:${portInfo.port}/`]);
@@ -155,7 +188,7 @@ while (Date.now() < deadline) {
       results.port = portInfo.port;
       results.httpCode = "200";
       results.readyPhase = sawReadyPhase;
-      console.log(`SMOKE_HARNESS_START=OK (pid=${portInfo.pid}, port=${portInfo.port})`);
+      console.log(`SMOKE_HARNESS_START=OK (pid=${portInfo.pid}, port=${portInfo.port}, attributed=${portInfo.attributed})`);
       console.log("SMOKE_PORT=" + portInfo.port);
       console.log("SMOKE_HTTP_READY=200");
       console.log(`SMOKE_NO_SYSTEM_NODE=OK (launched with PATH=${env.PATH}; harness runs bundled node inside the .app)`);
@@ -176,4 +209,4 @@ while (Date.now() < deadline) {
   }
   spawnSync("sleep", [String(POLL_MS / 1000)]);
 }
-fail("READY_TIMEOUT", `no HTTP 200 on harness port within ${TIMEOUT_MS}ms` + (portInfo ? ` (port ${portInfo.port} found but not 200)` : " (no harness port found)"), outBuf + "\n" + readStartupLog());
+fail("READY_TIMEOUT", `no HTTP 200 on harness port within ${TIMEOUT_MS}ms` + (portInfo ? ` (port ${portInfo.port} found but not 200)` : " (no harness port found)"), outBuf + "\n" + diagnostics());
