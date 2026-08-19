@@ -1,0 +1,105 @@
+=== context ===
+x86_64
+ProductName:		macOS
+ProductVersion:		15.7.7
+BuildVersion:		24G720
+=== ci-progress ===
+verify-arch
+=== bundle state ===
+total 0
+drwxr-xr-x  3 runner  staff  96 Aug 19 09:58 .
+drwxr-xr-x  3 runner  staff  96 Aug 19 09:58 ..
+drwxr-xr-x  3 runner  staff  96 Aug 19 09:58 DeepSeek Harness Desktop.app
+total 80
+drwxr-xr-x  3 runner  staff     96 Aug 19 09:58 _up_
+drwxr-xr-x  4 runner  staff    128 Aug 19 09:58 .
+drwxr-xr-x  5 runner  staff    160 Aug 19 09:58 ..
+-rw-r--r--  1 runner  staff  37222 Aug 19 09:42 icon.icns
+ls: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime: No such file or directory
+ls: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime/: No such file or directory
+ls: src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime/darwin-x64/node/bin/: No such file or directory
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop: Mach-O 64-bit executable x86_64
+SMOKE_BUNDLED_NODE=OK (v22.22.3, x86_64)
+SMOKE_APP_LAUNCH_PREP=OK (binary /Users/runner/work/deepseek-harness-desktop/deepseek-harness-desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop is x86_64)
+SMOKE_INTEGRITY=OK (node + harness entry sha256 match packaged manifest.json)
+SMOKE_HARNESS_START=OK (pid=null, port=49227, attributed=false)
+SMOKE_PORT=49227
+SMOKE_HTTP_READY=200
+SMOKE_NO_SYSTEM_NODE=OK (launched with PATH=/usr/bin:/bin:/usr/sbin:/sbin; harness runs bundled node inside the .app)
+SMOKE_APP_LAUNCH=OK
+PACKAGED_BACKEND_E2E=PASS
+GUI_E2E=NOT_AVAILABLE (headless CI: WebView window not visually verifiable)
+SMOKE_SHUTDOWN=forced harness_port_closed=yes
+=== verify-arch output ===
+++ find src-tauri/target/x86_64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app'
+++ head -1
++ APP='src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app'
+++ find 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS' -maxdepth 1 -type f
+++ head -1
++ BIN='src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop'
++ echo 'APP=src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app'
+APP=src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app
++ echo 'BIN=src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop'
+BIN=src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop
++ file 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop'
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop: Mach-O 64-bit executable x86_64
++ file 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop'
++ grep -q x86_64
++ echo TAURI_BINARY_ARCH_X86_64=OK
+TAURI_BINARY_ARCH_X86_64=OK
+++ find 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources' -path '*/runtime/darwin-x64/node/bin/node' -type f
+++ head -1
++ BUNDLED_NODE='src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node'
++ echo 'BUNDLED_NODE=[src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node]'
+BUNDLED_NODE=[src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node]
++ '[' -z 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node' ']'
++ file 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node'
++ grep -q x86_64
++ echo BUNDLED_NODE_ARCH_X86_64=OK
+BUNDLED_NODE_ARCH_X86_64=OK
++ echo 'APP_PATH=src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app'
++ echo verify-arch
+=== _up_ tree (node/runtime) ===
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@types/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/sdk-logs/build/esm/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/sdk-logs/build/esnext/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/sdk-logs/build/src/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/core/build/esm/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/core/build/esnext/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/core/build/src/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/sdk-trace/build/esm/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/sdk-trace/build/esnext/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/sdk-trace/build/src/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/resources/build/esm/detectors/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/resources/build/esnext/detectors/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/resources/build/src/detectors/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/exporter-logs-otlp-http/build/esm/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/exporter-logs-otlp-http/build/esnext/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@opentelemetry/exporter-logs-otlp-http/build/src/platform/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/google-auth-library/build/src/crypto/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@google/genai/dist/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@google/genai/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/package-lock.json
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/package.json
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/LICENSE
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/THIRD_PARTY_LICENSES.json
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/manifest.json
+src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/NOTICE.md
+=== SHA256SUMS-intel.txt ===
+# DeepSeek Harness Desktop v0.2 rc.7 — macOS Intel x64 (content checksums)
+# GitHub artifact download re-packs the zip, so zip-byte hashes are unstable.
+# Extract the zip, cd into the extracted folder, then run:
+#   shasum -a 256 -c SHA256SUMS-intel.txt
+dccaab85f2909c0d2c00b92b1135e885c15595f3a413be0be41bc7cabd91ea49  DeepSeek Harness Desktop.app/Contents/MacOS/deepseek-harness-desktop
+edc0e47adde954e891939bb509a62accdad5f6b15f32ec56ed78f9d6b7dd7308  DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node
+62c90e856d92a3de4bb504cab3484d13ad658263e84ac9120db00026b8854086  DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/manifest.json
+c0226687bb20f45c603ec6fe50f3de16d1c3510c3a803304ec575ef9bc366c62  DeepSeek Harness Desktop.app/Contents/Resources/_up_/runtime/darwin-x64/harness/node_modules/@deepseek-ai/dsh/lib/bin.js
+ZIP_SIZE_BYTES=121203629
