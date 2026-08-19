@@ -169,7 +169,7 @@ jobs:
           rm -rf "$PKG" && mkdir -p "$PKG"
           cp -R "$APP_PATH" "$PKG/"
           APP_IN_PKG="$(find "$PKG" -maxdepth 1 -name '*.app' | head -1)"
-          RUNTIME_IN_PKG="$APP_IN_PKG/Contents/Resources/_up_/runtime/darwin-x64"
+          RUNTIME_IN_PKG="$APP_IN_PKG/Contents/Resources/_up_/runtime"
           ENTRY="$(node -e "console.log(require('$RUNTIME_IN_PKG/manifest.json').harness.entry)")"
           (
             cd "$PKG"
