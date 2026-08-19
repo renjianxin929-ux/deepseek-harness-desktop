@@ -42,7 +42,18 @@ if (!APP || !existsSync(join(APP, "Contents"))) {
 
 const MACOS_DIR = join(APP, "Contents", "MacOS");
 const RESOURCES = join(APP, "Contents", "Resources");
-const RUNTIME = join(RESOURCES, "runtime");
+// Tauri v2 maps `..`-prefixed bundle resources (e.g. "../runtime") under
+// `Contents/Resources/_up_/` inside the .app — the app's own runtime resolver
+// checks both locations. Mirror that discovery here.
+const RUNTIME = existsSync(join(RESOURCES, "_up_", "runtime"))
+  ? join(RESOURCES, "_up_", "runtime")
+  : join(RESOURCES, "runtime");
+// Target dir override (defaults to the x64 slice this smoke is built for;
+// set SMOKE_RUNTIME_TARGET=darwin-arm64 to run the same flow on an arm64 build).
+const RUNTIME_TARGET = process.env.SMOKE_RUNTIME_TARGET || "darwin-x64";
+// Expected Mach-O arch marker for the target (x64 slice enforces x86_64; the
+// override path allows validating the same flow against a native arm64 build).
+const EXPECTED_ARCH = RUNTIME_TARGET === "darwin-arm64" ? "arm64" : "x86_64";
 const TIMEOUT_MS = Number(process.env.SMOKE_TIMEOUT_MS || 150000);
 const POLL_MS = 2000;
 
@@ -54,6 +65,7 @@ function run(cmd, args) {
   return { code: r.status, out: (r.stdout || "").trim(), err: (r.stderr || "").trim() };
 }
 function fail(step, detail, log) {
+  try { child && child.kill("SIGTERM"); } catch (_) {}
   console.log(`SMOKE_${step}=FAIL`);
   if (detail) console.log(`SMOKE_${step}_DETAIL=${JSON.stringify(detail)}`);
   if (log) console.log("--- app stdout/stderr tail ---\n" + log.slice(-4000));
@@ -65,11 +77,11 @@ function fail(step, detail, log) {
 const results = {};
 
 // ── Architecture + node version of the PACKAGED runtime ─────────────────────
-const nodeBin = join(RUNTIME, "darwin-x64", "node", "bin", "node");
+const nodeBin = join(RUNTIME, RUNTIME_TARGET, "node", "bin", "node");
 if (!existsSync(nodeBin)) {
   // Path inventory so a CI packaging regression is diagnosable at a glance.
-  const steps = [APP, join(APP, "Contents"), RESOURCES, RUNTIME, join(RUNTIME, "darwin-x64"), join(RUNTIME, "darwin-x64", "node"), join(RUNTIME, "darwin-x64", "node", "bin")];
-  const inv = ["cwd=" + process.cwd(), "APP=" + JSON.stringify(APP), "nodeBin=" + JSON.stringify(nodeBin)];
+  const steps = [APP, join(APP, "Contents"), RESOURCES, RUNTIME, join(RUNTIME, RUNTIME_TARGET), join(RUNTIME, RUNTIME_TARGET, "node"), join(RUNTIME, RUNTIME_TARGET, "node", "bin")];
+  const inv = ["cwd=" + process.cwd(), "APP=" + JSON.stringify(APP), "RUNTIME=" + JSON.stringify(RUNTIME), "nodeBin=" + JSON.stringify(nodeBin)];
   for (const p of steps) {
     let kind = "missing";
     try { kind = existsSync(p) ? (lstatSync(p).isSymbolicLink() ? "symlink" : "dir/file") : "missing"; } catch { kind = "err"; }
@@ -80,7 +92,7 @@ if (!existsSync(nodeBin)) {
   fail("BUNDLED_NODE", "missing " + nodeBin + "\n" + inv.join("\n"));
 }
 const fileNode = run("file", [nodeBin]);
-if (!fileNode.out.includes("x86_64")) fail("BUNDLED_NODE_ARCH", fileNode.out);
+if (!fileNode.out.includes(EXPECTED_ARCH)) fail("BUNDLED_NODE_ARCH", fileNode.out);
 const nodeVer = run(nodeBin, ["--version"]);
 if (!nodeVer.out.startsWith("v22.22.3")) fail("BUNDLED_NODE_VERSION", nodeVer.out);
 results.nodeArch = "x86_64";
@@ -92,16 +104,16 @@ const bins = readdirSync(MACOS_DIR).filter((n) => !n.startsWith("."));
 if (!bins.length) fail("APP_BINARY", "no binary in Contents/MacOS");
 const appBin = join(MACOS_DIR, bins[0]);
 const fileApp = run("file", [appBin]);
-if (!fileApp.out.includes("x86_64")) fail("APP_BINARY_ARCH", fileApp.out);
-console.log(`SMOKE_APP_LAUNCH_PREP=OK (binary ${appBin} is x86_64)`);
+if (!fileApp.out.includes(EXPECTED_ARCH)) fail("APP_BINARY_ARCH", fileApp.out);
+console.log(`SMOKE_APP_LAUNCH_PREP=OK (binary ${appBin} is ${EXPECTED_ARCH})`);
 
 // ── Runtime integrity (sha256 vs packaged manifest.json) ────────────────────
 const manifest = JSON.parse(readFileSync(join(RUNTIME, "manifest.json"), "utf8"));
 if (manifest.harness.version !== "0.1.0-rc.7") fail("INTEGRITY", "manifest harness version " + manifest.harness.version);
-const t = manifest.targets["darwin-x64"];
-if (!t) fail("INTEGRITY", "no darwin-x64 target in manifest");
+const t = manifest.targets[RUNTIME_TARGET];
+if (!t) fail("INTEGRITY", "no " + RUNTIME_TARGET + " target in manifest");
 if (sha256(nodeBin) !== t.nodeSha256) fail("INTEGRITY", "node sha256 mismatch vs manifest");
-const entry = join(RUNTIME, "darwin-x64", "harness", manifest.harness.entry);
+const entry = join(RUNTIME, RUNTIME_TARGET, "harness", manifest.harness.entry);
 if (!existsSync(entry)) fail("INTEGRITY", "harness entry missing: " + entry);
 if (sha256(entry) !== t.harnessEntrySha256) fail("INTEGRITY", "harness entry sha256 mismatch vs manifest");
 console.log("SMOKE_INTEGRITY=OK (node + harness entry sha256 match packaged manifest.json)");
@@ -133,12 +145,18 @@ function readStartupLog() {
     return "";
   }
 }
+// The app logs its own readiness line ("[ready] http://127.0.0.1:<port>") —
+// the authoritative source for the harness port (no lsof guessing needed).
+function portFromStartupLog(log) {
+  const m = (log || "").match(/\[ready\] http:\/\/127\.0\.0\.1:(\d+)/);
+  return m ? Number(m[1]) : null;
+}
 function findHarnessPort() {
   // Find TCP listeners owned by the app's process tree (the bundled node runs
   // dsh web from inside the .app, so its cmdline contains the app path).
   const lsof = run("lsof", ["-nP", "-iTCP", "-sTCP:LISTEN"]);
   if (lsof.code !== 0) return null;
-  const appFrag = APP + "/Contents/Resources/runtime";
+  const appFrag = "/runtime/" + RUNTIME_TARGET + "/";
   // macOS lsof NAME column looks like "127.0.0.1:54321 (LISTEN)" — scan every
   // field for the address (the trailing "(LISTEN)" state must not be mistaken
   // for the address).
@@ -174,7 +192,7 @@ function findHarnessPort() {
 function diagnostics() {
   const appName = basename(APP, ".app");
   const psAll = run("ps", ["axo", "pid,ppid,command"]);
-  const relevant = (psAll.out || "").split("\n").filter((l) => l.includes(appName) || l.includes("runtime/darwin-x64"));
+  const relevant = (psAll.out || "").split("\n").filter((l) => l.includes(appName) || l.includes("runtime/" + RUNTIME_TARGET));
   return (
     "--- ps (app/runtime processes) ---\n" +
     (relevant.join("\n") || "(none)") +
@@ -195,6 +213,10 @@ while (Date.now() < deadline) {
   const log = readStartupLog();
   if (log.includes("[status] ready")) sawReadyPhase = true;
   if (log.includes("[error]")) fail("APP_ERROR", log.split("\n").filter((l) => l.includes("[error]")).join(" | "), outBuf + "\n" + diagnostics());
+  const loggedPort = portFromStartupLog(log);
+  if (loggedPort && (!portInfo || portInfo.port !== loggedPort)) {
+    portInfo = { port: loggedPort, pid: null, attributed: false, source: "startup.log" };
+  }
   if (!portInfo) portInfo = findHarnessPort();
   if (portInfo) {
     const http = run("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "5", `http://127.0.0.1:${portInfo.port}/`]);
@@ -213,6 +235,10 @@ while (Date.now() < deadline) {
       child.kill("SIGTERM");
       const grace = Date.now() + 15000;
       while (Date.now() < grace && child.exitCode === null) {
+        spawnSync("sleep", ["1"]);
+      }
+      if (child.exitCode === null) {
+        try { child.kill("SIGKILL"); } catch (_) {}
         spawnSync("sleep", ["1"]);
       }
       const stillListening = findHarnessPort();

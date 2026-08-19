@@ -127,16 +127,19 @@ jobs:
           file "$BIN"
           if ! file "$BIN" | grep -q "x86_64"; then echo "::error::tauri binary is not x86_64"; exit 1; fi
           echo "TAURI_BINARY_ARCH_X86_64=OK"
-          if [ ! -f "$APP/Contents/Resources/runtime/darwin-x64/node/bin/node" ]; then
-            echo "::error::bundled node missing in packaged app: $APP/Contents/Resources/runtime/darwin-x64/node/bin/node"
+          # Tauri v2 maps `..`-prefixed resources (../runtime) under
+          # Contents/Resources/_up_/ — locate the bundled node in either layout.
+          BUNDLED_NODE="$(find "$APP/Contents/Resources" -path '*/runtime/darwin-x64/node/bin/node' -type f | head -1)"
+          if [ -z "$BUNDLED_NODE" ]; then
+            echo "::error::bundled node missing in packaged app (searched under Contents/Resources)"
+            find "$APP/Contents/Resources" -maxdepth 6 -name runtime -type d 2>/dev/null || true
             ls -la "$APP/Contents/Resources" || true
-            ls -la "$APP/Contents/Resources/runtime" 2>/dev/null || true
             exit 1
           fi
-          if ! file "$APP/Contents/Resources/runtime/darwin-x64/node/bin/node" | grep -q "x86_64"; then
-            echo "::error::bundled node is not x86_64"; exit 1;
+          if ! file "$BUNDLED_NODE" | grep -q "x86_64"; then
+            echo "::error::bundled node is not x86_64: $BUNDLED_NODE"; exit 1;
           fi
-          echo "BUNDLED_NODE_ARCH_X86_64=OK"
+          echo "BUNDLED_NODE_ARCH_X86_64=OK ($BUNDLED_NODE)"
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
           echo "verify-arch" > ci-progress.txt
 
