@@ -17,7 +17,7 @@ on:
       - release/macos-intel-x64
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   macos-intel-x64:
@@ -126,7 +126,9 @@ jobs:
 
       # ── Packaged-app backend smoke (isolated HOME, no system node) ──────────
       - name: Packaged app backend smoke (isolated HOME)
-        run: SMOKE_TIMEOUT_MS=240000 node scripts/smoke-macos-app.mjs "$APP_PATH"
+        run: |
+          set -o pipefail
+          SMOKE_TIMEOUT_MS=240000 node scripts/smoke-macos-app.mjs "$APP_PATH" 2>&1 | tee smoke-output.txt
 
       # ── Human-test artifact: zip + SHA256SUMS ───────────────────────────────
       - name: Package x64 zip + SHA256SUMS
@@ -155,3 +157,31 @@ jobs:
           name: SHA256SUMS-intel.txt
           path: SHA256SUMS-intel.txt
           if-no-files-found: error
+
+      # ── Publish run info (diagnostics on failure; sha256/size on success) ───
+      # The smoke output and artifact metadata are pushed to a throwaway branch
+      # ci/diagnostics-<run-id> so the result is inspectable via the public API.
+      - name: Publish run info (always)
+        if: always()
+        run: |
+          set -euxo pipefail
+          git config user.name "ci-diag"
+          git config user.email "ci-diag@users.noreply.github.com"
+          BRANCH="ci/diagnostics-${GITHUB_RUN_ID}"
+          git checkout -b "$BRANCH"
+          mkdir -p .github/ci-diag
+          DIAG=".github/ci-diag/run-${GITHUB_RUN_ID}.txt"
+          { echo "=== context ==="; uname -m; sw_vers; } >> "$DIAG" || true
+          if [ -f smoke-output.txt ]; then cat smoke-output.txt >> "$DIAG" || true; fi
+          if [ -f SHA256SUMS-intel.txt ]; then
+            echo "=== SHA256SUMS-intel.txt ===" >> "$DIAG"
+            cat SHA256SUMS-intel.txt >> "$DIAG" || true
+          fi
+          if ls DeepSeek-Harness-Desktop-v0.2-rc7-macos-intel-x64.zip >/dev/null 2>&1; then
+            echo "ZIP_SIZE_BYTES=$(stat -f%z DeepSeek-Harness-Desktop-v0.2-rc7-macos-intel-x64.zip)" >> "$DIAG"
+          fi
+          git add .github/ci-diag
+          git commit -m "ci: run info ${GITHUB_RUN_ID}" || true
+          git push origin "HEAD:refs/heads/${BRANCH}" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
