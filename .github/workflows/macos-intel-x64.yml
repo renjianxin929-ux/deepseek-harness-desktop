@@ -158,16 +158,45 @@ jobs:
       # ── Human-test artifact: zip + SHA256SUMS ───────────────────────────────
       - name: Package x64 zip + SHA256SUMS
         run: |
+          set -euxo pipefail
           ZIP="DeepSeek-Harness-Desktop-v0.2-rc7-macos-intel-x64.zip"
-          ditto -c -k --keepParent "$APP_PATH" "$ZIP"
-          shasum -a 256 "$ZIP" | tee SHA256SUMS-intel.txt
-          ZIP_SHA="$(shasum -a 256 "$ZIP" | awk '{print $1}')"
-          ZIP_SIZE="$(stat -f%z "$ZIP")"
-          echo "INTEL_ZIP_SHA256=$ZIP_SHA"
+          # GitHub's artifact container re-packs zip bytes on download, so a zip
+          # SHA can never match the downloaded file. Verify by CONTENT instead:
+          # SHA256SUMS-intel.txt hashes files INSIDE the .app (byte-identical
+          # through the container's re-pack). Extract the zip, cd into the
+          # extracted folder, then: shasum -a 256 -c SHA256SUMS-intel.txt
+          PKG="$RUNNER_TEMP/hd-pkg"
+          rm -rf "$PKG" && mkdir -p "$PKG"
+          cp -R "$APP_PATH" "$PKG/"
+          APP_IN_PKG="$(find "$PKG" -maxdepth 1 -name '*.app' | head -1)"
+          RUNTIME_IN_PKG="$APP_IN_PKG/Contents/Resources/_up_/runtime/darwin-x64"
+          ENTRY="$(node -e "console.log(require('$RUNTIME_IN_PKG/manifest.json').harness.entry)")"
+          (
+            cd "$PKG"
+            {
+              echo "# DeepSeek Harness Desktop v0.2 rc.7 — macOS Intel x64 (content checksums)"
+              echo "# GitHub artifact download re-packs the zip, so zip-byte hashes are unstable."
+              echo "# Extract the zip, cd into the extracted folder, then run:"
+              echo "#   shasum -a 256 -c SHA256SUMS-intel.txt"
+              shasum -a 256 \
+                "$(basename "$APP_IN_PKG")/Contents/MacOS/deepseek-harness-desktop" \
+                "$(basename "$APP_IN_PKG")/Contents/Resources/_up_/runtime/darwin-x64/node/bin/node" \
+                "$(basename "$APP_IN_PKG")/Contents/Resources/_up_/runtime/manifest.json" \
+                "$(basename "$APP_IN_PKG")/Contents/Resources/_up_/runtime/darwin-x64/harness/$ENTRY"
+            } > SHA256SUMS-intel.txt
+          )
+          cp "$PKG/SHA256SUMS-intel.txt" "$GITHUB_WORKSPACE/SHA256SUMS-intel.txt"
+          # The zip contains the .app AND the sums file (extract → verify in place).
+          ditto -c -k --keepParent "$PKG" "$GITHUB_WORKSPACE/$ZIP"
+          # Self-check: the zip's own content must pass the sums file.
+          rm -rf "$RUNNER_TEMP/verify" && mkdir -p "$RUNNER_TEMP/verify"
+          unzip -q "$GITHUB_WORKSPACE/$ZIP" -d "$RUNNER_TEMP/verify"
+          (cd "$RUNNER_TEMP/verify/hd-pkg" && shasum -a 256 -c SHA256SUMS-intel.txt)
+          ZIP_SIZE="$(stat -f%z "$GITHUB_WORKSPACE/$ZIP")"
           echo "INTEL_ZIP_SIZE_BYTES=$ZIP_SIZE"
-          echo "INTEL_ZIP_SHA256=$ZIP_SHA" >> "$GITHUB_STEP_SUMMARY"
           echo "INTEL_ZIP_SIZE_BYTES=$ZIP_SIZE" >> "$GITHUB_STEP_SUMMARY"
           echo "ZIP_PATH=$ZIP" >> "$GITHUB_ENV"
+          echo "CONTENT_CHECKSUMS_OK"
 
       - name: Upload x64 zip artifact
         uses: actions/upload-artifact@v4
