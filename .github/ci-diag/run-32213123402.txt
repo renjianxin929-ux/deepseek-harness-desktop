@@ -1,0 +1,9 @@
+=== context ===
+x86_64
+ProductName:		macOS
+ProductVersion:		15.7.7
+BuildVersion:		24G720
+SMOKE_BUNDLED_NODE=FAIL
+SMOKE_BUNDLED_NODE_DETAIL="missing src-tauri/target/x86_64-apple-darwin/release/bundle/macos/DeepSeek Harness Desktop.app/Contents/Resources/runtime/darwin-x64/node/bin/node"
+PACKAGED_BACKEND_E2E=FAIL
+GUI_E2E=NOT_AVAILABLE
