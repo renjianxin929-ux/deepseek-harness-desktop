@@ -23,6 +23,7 @@ import { spawn, spawnSync, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -30,11 +31,12 @@ import {
   rmSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 
-const APP = process.argv[2];
+const APP = resolve(process.argv[2] || "");
 if (!APP || !existsSync(join(APP, "Contents"))) {
   console.error("usage: node scripts/smoke-macos-app.mjs <path-to.app>");
+  console.error("  (resolved APP=" + APP + ", cwd=" + process.cwd() + ")");
   process.exit(2);
 }
 
@@ -64,7 +66,19 @@ const results = {};
 
 // ── Architecture + node version of the PACKAGED runtime ─────────────────────
 const nodeBin = join(RUNTIME, "darwin-x64", "node", "bin", "node");
-if (!existsSync(nodeBin)) fail("BUNDLED_NODE", "missing " + nodeBin);
+if (!existsSync(nodeBin)) {
+  // Path inventory so a CI packaging regression is diagnosable at a glance.
+  const steps = [APP, join(APP, "Contents"), RESOURCES, RUNTIME, join(RUNTIME, "darwin-x64"), join(RUNTIME, "darwin-x64", "node"), join(RUNTIME, "darwin-x64", "node", "bin")];
+  const inv = ["cwd=" + process.cwd(), "APP=" + JSON.stringify(APP), "nodeBin=" + JSON.stringify(nodeBin)];
+  for (const p of steps) {
+    let kind = "missing";
+    try { kind = existsSync(p) ? (lstatSync(p).isSymbolicLink() ? "symlink" : "dir/file") : "missing"; } catch { kind = "err"; }
+    inv.push(`  ${kind}  ${p}`);
+  }
+  inv.push("--- ls -la " + join(APP, "Contents", "Resources") + " ---\n" + run("ls", ["-la", join(APP, "Contents", "Resources")]).out);
+  inv.push("--- ls -la " + RUNTIME + " ---\n" + run("ls", ["-la", RUNTIME]).out);
+  fail("BUNDLED_NODE", "missing " + nodeBin + "\n" + inv.join("\n"));
+}
 const fileNode = run("file", [nodeBin]);
 if (!fileNode.out.includes("x86_64")) fail("BUNDLED_NODE_ARCH", fileNode.out);
 const nodeVer = run(nodeBin, ["--version"]);

@@ -115,19 +115,31 @@ jobs:
 
       - name: Verify packaged app binary architecture
         run: |
+          set -euxo pipefail
           APP="$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' | head -1)"
           BIN="$(find "$APP/Contents/MacOS" -maxdepth 1 -type f | head -1)"
           echo "APP=$APP"
           echo "BIN=$BIN"
           file "$BIN"
-          file "$BIN" | grep -q "x86_64" && echo "TAURI_BINARY_ARCH_X86_64=OK"
-          file "$APP/Contents/Resources/runtime/darwin-x64/node/bin/node" | grep -q "x86_64" && echo "BUNDLED_NODE_ARCH_X86_64=OK"
+          if ! file "$BIN" | grep -q "x86_64"; then echo "::error::tauri binary is not x86_64"; exit 1; fi
+          echo "TAURI_BINARY_ARCH_X86_64=OK"
+          if [ ! -f "$APP/Contents/Resources/runtime/darwin-x64/node/bin/node" ]; then
+            echo "::error::bundled node missing in packaged app: $APP/Contents/Resources/runtime/darwin-x64/node/bin/node"
+            ls -la "$APP/Contents/Resources" || true
+            ls -la "$APP/Contents/Resources/runtime" 2>/dev/null || true
+            exit 1
+          fi
+          if ! file "$APP/Contents/Resources/runtime/darwin-x64/node/bin/node" | grep -q "x86_64"; then
+            echo "::error::bundled node is not x86_64"; exit 1;
+          fi
+          echo "BUNDLED_NODE_ARCH_X86_64=OK"
           echo "APP_PATH=$APP" >> "$GITHUB_ENV"
 
       # ── Packaged-app backend smoke (isolated HOME, no system node) ──────────
       - name: Packaged app backend smoke (isolated HOME)
         run: |
           set -o pipefail
+          echo "APP_PATH=[$APP_PATH]"
           SMOKE_TIMEOUT_MS=240000 node scripts/smoke-macos-app.mjs "$APP_PATH" 2>&1 | tee smoke-output.txt
 
       # ── Human-test artifact: zip + SHA256SUMS ───────────────────────────────
